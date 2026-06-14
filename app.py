@@ -10,7 +10,7 @@ from flask import Flask, after_this_request, flash, jsonify, redirect, render_te
 from werkzeug.exceptions import RequestEntityTooLarge
 from config import DEBUG, HOST, MAX_CONTENT_LENGTH, PORT, SECRET_KEY
 from db import init_db, execute, query_all, query_one
-from utils import allowed_file, save_photo_file, get_tags_for_photo, set_photo_tags, avg_score, generate_index_sheet, normalize_score, final_score_from_parts, sql_avg_score_expr, sql_final_score_expr, SCORE_OPTIONS
+from utils import allowed_file, save_photo_file, get_tags_for_photo, set_photo_tags, avg_score, generate_index_sheet, get_index_sheet_defaults, list_strip_templates, normalize_score, final_score_from_parts, sql_avg_score_expr, sql_final_score_expr, SCORE_OPTIONS, INDEX_135_MAX_PHOTOS
 from qwen_service import (
     analyze_photo_with_qwen,
     generate_roll_summary_with_qwen,
@@ -433,6 +433,9 @@ def roll_detail(roll_id):
         qwen_ready=qwen_is_ready(),
         qwen_config=get_qwen_config(),
         roll_stats=roll_stats,
+        index_defaults=get_index_sheet_defaults(roll),
+        index_strip_templates=list_strip_templates(roll["film_format"]),
+        index_max_photos=INDEX_135_MAX_PHOTOS,
     )
 
 
@@ -631,10 +634,25 @@ def roll_download_photos(roll_id):
 
 @app.route("/roll/<int:roll_id>/index_sheet", methods=["POST"])
 def index_sheet(roll_id):
-    get_roll_or_404(roll_id)
+    roll = get_roll_or_404(roll_id)
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
-        rel = generate_index_sheet(roll_id)
+        if "120" in (roll["film_format"] or "").lower():
+            raise ValueError("暂不支持生成120格式索引图。")
+        options = {
+            "show_header": request.form.get("show_header"),
+            "header_bg_color": request.form.get("header_bg_color"),
+            "header_brand": request.form.get("header_brand"),
+            "header_title": request.form.get("header_title"),
+            "header_note": request.form.get("header_note"),
+            "film_info": request.form.get("film_info") or request.form.get("film_model"),
+            "strip_template": request.form.get("strip_template"),
+            "border_size": request.form.get("border_size"),
+            "border_color": request.form.get("border_color"),
+            "strip_gap": request.form.get("strip_gap"),
+        }
+        film_model = (options["film_info"] or roll["film_type"] or "FILM 135").strip()
+        rel = generate_index_sheet(roll_id, film_model=film_model, options=options)
         if is_ajax:
             return jsonify({"ok": True, "file_path": rel, "url": url_for("static", filename=rel)})
         return redirect(url_for("roll_detail", roll_id=roll_id, focus="index"))

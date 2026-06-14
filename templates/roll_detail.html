@@ -92,7 +92,14 @@
                 <button class="btn primary" type="submit">批量分析照片</button>
             </form>
             {% endif %}
-            <form action="{{ url_for('index_sheet', roll_id=roll.id) }}" method="post" data-index-form>
+            <form
+                action="{{ url_for('index_sheet', roll_id=roll.id) }}"
+                method="post"
+                data-index-form
+                data-film-format="{{ roll.film_format or '' }}"
+                data-film-model="{{ roll.film_type or 'FILM 135' }}"
+                data-photo-count="{{ photos|length }}"
+                data-index-max="{{ index_max_photos }}">
                 <button class="btn" type="submit">生成胶片索引图</button>
             </form>
         </div>
@@ -159,6 +166,56 @@
         {% endfor %}
     </div>
 </section>
+
+<div class="film-model-dialog" data-film-model-dialog aria-hidden="true">
+    <form class="film-model-dialog__panel" data-film-model-dialog-form>
+        <div class="dialog-heading">
+            <h2>索引图参数</h2>
+            <p class="muted">不修改时使用当前默认参数生成。</p>
+        </div>
+        <label class="check-row">
+            <input type="checkbox" name="show_header" data-index-show-header checked>
+            <span>添加标题栏</span>
+        </label>
+        <div class="index-option-grid">
+            <label>标题栏颜色
+                <input type="color" name="header_bg_color" data-default-value="{{ index_defaults.header_bg_color }}" value="{{ index_defaults.header_bg_color }}">
+            </label>
+            <label>左侧标题
+                <input type="text" name="header_brand" data-default-value="{{ index_defaults.header_brand }}" value="{{ index_defaults.header_brand }}" maxlength="80">
+            </label>
+            <label>备注
+                <input type="text" name="header_note" data-default-value="{{ index_defaults.header_note }}" value="{{ index_defaults.header_note }}" maxlength="160">
+            </label>
+            <label>右侧标题
+                <input type="text" name="header_title" data-default-value="{{ index_defaults.header_title }}" value="{{ index_defaults.header_title }}" maxlength="120">
+            </label>
+            <label>胶卷信息
+                <input type="text" name="film_info" data-default-value="{{ index_defaults.film_info }}" value="{{ index_defaults.film_info }}" maxlength="120">
+            </label>
+            <label>底片条模板
+                <select name="strip_template" data-default-value="{{ index_defaults.strip_template }}">
+                    {% for item in index_strip_templates %}
+                    <option value="{{ item.value }}" {% if item.value == index_defaults.strip_template %}selected{% endif %}>{{ item.label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>白边宽度
+                <input type="number" name="border_size" data-default-value="{{ index_defaults.border_size }}" value="{{ index_defaults.border_size }}" min="0" max="160" step="1">
+            </label>
+            <label>底片间距
+                <input type="number" name="strip_gap" data-default-value="{{ index_defaults.strip_gap }}" value="{{ index_defaults.strip_gap }}" min="0" max="120" step="1">
+            </label>
+        </div>
+        <input type="hidden" name="border_color" data-default-value="{{ index_defaults.border_color }}" value="{{ index_defaults.border_color }}">
+        <h2>胶卷型号</h2>
+        <div class="film-model-dialog__actions">
+            <button class="btn light" type="button" data-film-model-cancel>取消</button>
+            <button class="btn primary" type="submit">确认生成</button>
+            <button class="btn light" type="button" data-index-reset hidden>重置默认参数</button>
+        </div>
+    </form>
+</div>
 <script>
 (() => {
     const form = document.querySelector("[data-auto-upload]");
@@ -246,22 +303,113 @@
     const form = document.querySelector("[data-index-form]");
     if (!form) return;
     const button = form.querySelector("button");
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
+    const dialog = document.querySelector("[data-film-model-dialog]");
+    const dialogForm = document.querySelector("[data-film-model-dialog-form]");
+    const cancel = document.querySelector("[data-film-model-cancel]");
+    const reset = document.querySelector("[data-index-reset]");
+    let pending = false;
+
+    const fields = () => Array.from(dialogForm?.querySelectorAll("input, select, textarea") || [])
+        .filter((field) => field.name);
+
+    const changed = () => fields().some((field) => {
+        if (field.type === "checkbox") return field.checked !== true;
+        return String(field.value || "") !== String(field.dataset.defaultValue || "");
+    });
+
+    const syncReset = () => {
+        if (reset) reset.hidden = !changed();
+    };
+
+    const resetDefaults = () => {
+        fields().forEach((field) => {
+            if (field.type === "checkbox") {
+                field.checked = true;
+            } else if (field.dataset.defaultValue !== undefined) {
+                field.value = field.dataset.defaultValue;
+            }
+        });
+        syncReset();
+    };
+
+    const closeDialog = () => {
+        pending = false;
+        dialog?.classList.remove("is-open");
+        dialog?.setAttribute("aria-hidden", "true");
+    };
+
+    const openDialog = () => {
+        pending = true;
+        if (!dialog) return;
+        dialog.classList.add("is-open");
+        dialog.setAttribute("aria-hidden", "false");
+        dialogForm?.querySelector("[name='header_title']")?.focus();
+        syncReset();
+    };
+
+    const submitIndex = async () => {
+        if (!dialogForm) return;
         if (button) {
             button.disabled = true;
             button.textContent = "生成中...";
         }
+        const data = new FormData(dialogForm);
+        if (!dialogForm.querySelector("[name='show_header']")?.checked) {
+            data.set("show_header", "0");
+        } else {
+            data.set("show_header", "1");
+        }
         const response = await fetch(form.action, {
             method: "POST",
-            headers: { "X-Requested-With": "XMLHttpRequest" }
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: data
         }).catch(() => null);
         if (response && response.ok) {
-            window.location.href = `${location.pathname}?focus=index#index-sheets`;
-        } else if (button) {
+            window.location.assign(`${location.pathname}?focus=index&updated=${Date.now()}#index-sheets`);
+            return;
+        }
+        if (button) {
             button.disabled = false;
             button.textContent = "生成胶片索引图";
         }
+        let payload = {};
+        try { payload = response ? await response.json() : {}; } catch { payload = {}; }
+        alert(payload.message || "索引图生成失败。");
+    };
+
+    fields().forEach((field) => field.addEventListener("input", syncReset));
+    fields().forEach((field) => field.addEventListener("change", syncReset));
+    reset?.addEventListener("click", resetDefaults);
+
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const filmFormat = (form.dataset.filmFormat || "").toLowerCase();
+        if (filmFormat.includes("120")) {
+            alert("暂不支持生成120格式索引图。");
+            return;
+        }
+        const photoCount = Number(form.dataset.photoCount || 0);
+        const maxPhotos = Number(form.dataset.indexMax || 42);
+        if (photoCount > maxPhotos) {
+            alert(`图片数量过多，最多支持 ${maxPhotos} 张照片生成索引图。`);
+            return;
+        }
+        openDialog();
+    });
+
+    dialogForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!pending || button?.disabled) return;
+        closeDialog();
+        await submitIndex();
+    });
+
+    cancel?.addEventListener("click", closeDialog);
+    dialog?.addEventListener("click", (event) => {
+        if (event.target === dialog) closeDialog();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && pending) closeDialog();
     });
 })();
 

@@ -35,6 +35,8 @@ static/thumbs/
 static/index_sheets/
 ```
 
+项目源码中必须包含 `assets/film_strips/`，否则索引图生成会缺少底片条模板或 135 齿孔模板。首次部署不需要准备 `assets/fonts/` 字体文件，Docker 镜像会安装 `fonts-noto-cjk`。
+
 首次部署如果没有数据库，可以创建空文件：
 
 ```bash
@@ -110,6 +112,8 @@ static/thumbs/
 static/index_sheets/
 ```
 
+`assets/film_strips/` 不是运行数据，但它是索引图生成的必需模板资产；更新代码时应随代码包一起覆盖或补齐。`assets/fonts/` 只作为可选字体覆盖目录，公开仓库和 NAS 代码包通常只需要保留其中的 `README.md` 和 `.gitkeep`。
+
 推荐更新流程：
 
 1. 在 NAS 上备份当前代码和配置：
@@ -146,6 +150,8 @@ assets/fonts/*.otf
 *apiKey*.csv
 ```
 
+不要排除 `assets/film_strips/`。该目录内的底片条模板、`135/sprocket_strip.png` 和各胶片模板文件夹需要随代码包上传。
+
 3. 在 NAS 上解包到 `/volume1/docker/filmlog`。
 
 4. 重建并启动容器：
@@ -180,6 +186,8 @@ static/uploads/
 static/thumbs/
 static/index_sheets/
 ```
+
+如果你手绘了新的底片条模板，也建议备份 `assets/film_strips/`，或确认这些模板已经提交到 Git 仓库。
 
 推荐先停止服务再备份：
 
@@ -235,6 +243,17 @@ docker ps --filter name=filmlog
 ### AI 功能不可用
 
 检查 `.env` 中是否配置了 `DASHSCOPE_API_KEY`，并确认 `QWEN_BASE_URL`、模型名称和账户额度可用。未配置 API Key 不影响基础照片管理功能。
+
+### 索引图模板缺失
+
+如果生成索引图时报“未找到可用的底片条模板”或“135齿孔模板缺失”，检查以下路径是否存在：
+
+```text
+assets/film_strips/135/sprocket_strip.png
+assets/film_strips/135/kodak-gc-400/1-6.png
+```
+
+135 模板文件夹使用小写 ASCII 和连字符命名，例如 `kodak-gc-400`。每个模板文件夹需要按帧段提供 `1-6.png`、`7-12.png`、`13-18.png` 等文件。
 
 ### 中文索引图字体异常
 

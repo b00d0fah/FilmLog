@@ -1298,6 +1298,108 @@ textarea { resize: vertical; }
     margin-right: auto;
 }
 
+.film-model-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    place-items: center;
+    padding: 24px;
+    background: rgba(10, 9, 7, 0.72);
+}
+
+.film-model-dialog.is-open {
+    display: grid;
+}
+
+.film-model-dialog__panel {
+    width: min(100%, 760px);
+    max-height: min(88vh, 780px);
+    overflow: auto;
+    display: grid;
+    gap: 16px;
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.film-model-dialog__panel h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.dialog-heading {
+    display: grid;
+    gap: 4px;
+}
+
+.dialog-heading .muted {
+    margin: 0;
+}
+
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--paper);
+    font-weight: 700;
+}
+
+.check-row input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+}
+
+.index-option-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.index-option-grid label {
+    display: grid;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.film-model-dialog__panel input:not([type="checkbox"]),
+.film-model-dialog__panel select {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--paper);
+    background: #050505;
+    font-family: inherit;
+    font-size: 16px;
+    letter-spacing: 0;
+}
+
+.film-model-dialog__panel input[type="color"] {
+    padding: 5px;
+}
+
+.film-model-dialog__panel > h2 {
+    display: none;
+}
+
+.film-model-dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.film-model-dialog__actions [data-index-reset] {
+    margin-right: auto;
+}
+
 .ai-panel,
 .ai-box {
     background: var(--surface);

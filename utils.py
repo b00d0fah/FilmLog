@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-import random
+import re
 import uuid
+from datetime import datetime
 from math import floor
 from typing import Iterable, List
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -14,6 +15,8 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")
 THUMB_DIR = os.path.join(STATIC_DIR, "thumbs")
 INDEX_DIR = os.path.join(STATIC_DIR, "index_sheets")
+FILM_STRIP_ASSET_DIR = os.path.join(BASE_DIR, "assets", "film_strips")
+INDEX_135_MAX_PHOTOS = 42
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "tif", "tiff"}
 SCORE_MIN = 1.0
 SCORE_MAX = 10.0
@@ -28,6 +31,70 @@ SCORE_PART_COLUMNS = (
     "color_score",
     "emotion_score",
 )
+
+# 135 index visual tuning parameters. Adjust these when refining the film-strip
+# simulation: title area, frame positions, sprocket placement, typography, and strip spacing.
+INDEX_135_LAYOUT = {
+    "frames_per_strip": 6,
+    "sheet_bg": (250, 250, 246),
+    "sheet_margin_x": 0,
+    "sheet_margin_bottom": 0,
+    "header_h": 480,
+    "header_bg": (16, 16, 16),
+    "header_divider_y": 468,
+    "header_divider_fill": (236, 236, 232),
+    "header_divider_w": 5,
+    "header_brand_text": "FilmLog",
+    "header_brand_x": 72,
+    "header_brand_y": 78,
+    "header_brand_font_size": 112,
+    "header_right_w": 1540,
+    "header_right_x_offset": 72,
+    "header_title_y": 64,
+    "header_meta_y": 152,
+    "header_date_y": 210,
+    "header_extra_y": 264,
+    "header_title_font_size": 72,
+    "header_meta_font_size": 42,
+    "header_date_font_size": 42,
+    "header_extra_font_size": 42,
+    "header_note_font_size": 42,
+    "header_line_gap": 28,
+    "header_title_fill": (246, 246, 242),
+    "header_meta_fill": (190, 190, 182),
+    "header_date_fill": (150, 150, 142),
+    "photo_x": 26,
+    "photo_y": 110,
+    "photo_w": 720,
+    "photo_h": 480,
+    "photo_step_x": 746,
+    "sprocket_x": 28,
+    "sprocket_top_y": 40,
+    "sprocket_bottom_y": 600,
+    "sheet_strip_gap": 25,
+    "label_font_size": 22,
+    "frame_font_size": 24,
+    "top_text_y": 10,
+    "bottom_text_y": 668,
+    "frame_text_offset_x": 12,
+    "film_text_offset_x": 98,
+    "text_fill": (238, 238, 224),
+    "empty_frame_fill": (0, 0, 0),
+}
+
+INDEX_SHEET_DEFAULTS = {
+    "show_header": True,
+    "header_height": INDEX_135_LAYOUT["header_h"],
+    "header_bg_color": "#101010",
+    "header_brand": "FilmLog",
+    "header_title": "",
+    "header_note": "",
+    "film_info": "",
+    "strip_template": "",
+    "border_size": 35,
+    "border_color": "#ffffff",
+    "strip_gap": INDEX_135_LAYOUT["sheet_strip_gap"],
+}
 
 
 def ensure_dirs():
@@ -315,55 +382,293 @@ def _ellipsize(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> st
     return value + suffix if value else suffix
 
 
-def _draw_contact_texture(draw: ImageDraw.ImageDraw, width: int, height: int, seed: int):
-    rng = random.Random(seed)
-    for _ in range(520):
-        x = rng.randrange(0, width)
-        y = rng.randrange(0, height)
-        length = rng.randrange(10, 90)
-        color = rng.choice(((18, 18, 18), (24, 23, 21), (9, 9, 9)))
-        draw.line((x, y, min(width, x + length), y), fill=color, width=1)
-    for _ in range(90):
-        x = rng.randrange(0, width)
-        y = rng.randrange(0, height)
-        color = rng.choice(((36, 35, 32), (44, 41, 36), (12, 12, 12)))
-        draw.point((x, y), fill=color)
+def _text_height(draw: ImageDraw.ImageDraw, text: str, font) -> int:
+    bbox = draw.textbbox((0, 0), text or "Ag", font=font)
+    return bbox[3] - bbox[1]
 
 
-def _draw_sprocket_row(draw: ImageDraw.ImageDraw, x: int, y: int, width: int, top: bool):
-    hole_w, hole_h, step = 26, 34, 56
-    start = x + 14
-    count = max(0, (width - 28) // step)
-    for idx in range(count):
-        hx = start + idx * step
-        draw.rounded_rectangle(
-            (hx, y, hx + hole_w, y + hole_h),
-            radius=4,
-            fill=(244, 244, 240),
-            outline=(210, 210, 205),
-        )
+def _normalize_film_format(value: str | None) -> str:
+    raw = str(value or "").lower()
+    if "120" in raw:
+        return "120"
+    return "135"
+
+
+def _slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
+
+
+def _get_strip_format_dir(film_format: str) -> str:
+    return os.path.join(FILM_STRIP_ASSET_DIR, _normalize_film_format(film_format))
+
+
+def _get_template_root(film_format: str, template_name: str) -> str:
+    return os.path.join(_get_strip_format_dir(film_format), _slugify(template_name))
+
+
+def get_index_sheet_defaults(roll=None) -> dict:
+    defaults = dict(INDEX_SHEET_DEFAULTS)
+    if roll:
+        defaults["film_info"] = roll["film_type"] or "FILM 135"
+        templates = list_strip_templates(roll["film_format"])
+        defaults["strip_template"] = templates[0]["value"] if templates else ""
+    return defaults
+
+
+def list_strip_templates(film_format: str | None) -> list[dict]:
+    templates = []
+    format_dir = _get_strip_format_dir(film_format)
+    if not os.path.isdir(format_dir):
+        return templates
+    for name in sorted(os.listdir(format_dir)):
+        abs_dir = os.path.join(format_dir, name)
+        if not os.path.isdir(abs_dir):
+            continue
+        value = _slugify(name)
+        if not value:
+            continue
+        label = name.replace("_", " ").replace("-", " ").strip()
+        templates.append({"value": value, "label": label or name})
+    return templates
+
+
+def _parse_bool(value, default: bool = True) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _parse_hex_color(value, default: str) -> str:
+    raw = str(value or "").strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", raw):
+        return raw.lower()
+    return default
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = _parse_hex_color(value, "#000000").lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def normalize_index_sheet_options(raw: dict | None, roll=None) -> dict:
+    defaults = get_index_sheet_defaults(roll)
+    raw = raw or {}
+    available_templates = {item["value"] for item in list_strip_templates(roll["film_format"] if roll else None)}
+    strip_template = str(raw.get("strip_template") or defaults["strip_template"]).strip().lower()
+    if strip_template not in available_templates:
+        strip_template = defaults["strip_template"]
+    return {
+        "show_header": _parse_bool(raw.get("show_header"), defaults["show_header"]),
+        "header_height": INDEX_135_LAYOUT["header_h"],
+        "header_bg_color": _parse_hex_color(raw.get("header_bg_color"), defaults["header_bg_color"]),
+        "header_brand": str(raw.get("header_brand") or defaults["header_brand"]).strip()[:80],
+        "header_title": str(raw.get("header_title") or defaults["header_title"]).strip()[:120],
+        "header_note": str(raw.get("header_note") or defaults["header_note"]).strip()[:160],
+        "film_info": str(raw.get("film_info") or defaults["film_info"]).strip()[:120],
+        "strip_template": strip_template,
+        "border_size": _parse_int(raw.get("border_size"), defaults["border_size"], 0, 160),
+        "border_color": _parse_hex_color(raw.get("border_color"), defaults["border_color"]),
+        "strip_gap": _parse_int(raw.get("strip_gap"), defaults["strip_gap"], 0, 120),
+    }
+
+
+def _crop_landscape_ratio(im: Image.Image, ratio: float = 1.5) -> Image.Image:
+    if im.height > im.width:
+        im = im.rotate(-90, expand=True)
+    src_ratio = im.width / im.height if im.height else ratio
+    if src_ratio > ratio:
+        new_w = max(1, int(im.height * ratio))
+        left = (im.width - new_w) // 2
+        im = im.crop((left, 0, left + new_w, im.height))
+    elif src_ratio < ratio:
+        new_h = max(1, int(im.width / ratio))
+        top = (im.height - new_h) // 2
+        im = im.crop((0, top, im.width, top + new_h))
+    return im
 
 
 def _make_index_frame(photo, frame_w: int, frame_h: int) -> Image.Image:
+    if not photo:
+        return Image.new("RGB", (frame_w, frame_h), INDEX_135_LAYOUT["empty_frame_fill"])
     source_rel = photo["image_path"] or photo["thumb_path"]
     source_abs = os.path.join(STATIC_DIR, source_rel)
     try:
         with Image.open(source_abs) as im:
             im = ImageOps.exif_transpose(im).convert("RGB")
-            if im.height > im.width:
-                im = im.rotate(-90, expand=True)
-            im.thumbnail((frame_w, frame_h), Image.Resampling.LANCZOS)
-            canvas = Image.new("RGB", (frame_w, frame_h), (8, 8, 8))
-            ox = (frame_w - im.width) // 2
-            oy = (frame_h - im.height) // 2
-            canvas.paste(im, (ox, oy))
-            return canvas
+            im = _crop_landscape_ratio(im, frame_w / frame_h)
+            return im.resize((frame_w, frame_h), Image.Resampling.LANCZOS)
     except Exception:
-        return Image.new("RGB", (frame_w, frame_h), (28, 28, 28))
+        return Image.new("RGB", (frame_w, frame_h), INDEX_135_LAYOUT["empty_frame_fill"])
 
 
-def generate_index_sheet(roll_id: int) -> str:
-    """Generate a lab-style 35mm negative sleeve contact sheet."""
+def _paste_rgba(base: Image.Image, overlay: Image.Image, xy: tuple[int, int]):
+    if overlay.mode == "RGBA":
+        base.paste(overlay, xy, overlay)
+    else:
+        base.paste(overlay, xy)
+
+
+def _draw_135_sheet_header(sheet: Image.Image, roll, film_model: str):
+    layout = INDEX_135_LAYOUT
+    draw = ImageDraw.Draw(sheet)
+    width = sheet.width
+    header_h = layout["header_h"]
+    draw.rectangle((0, 0, width, header_h), fill=layout["header_bg"])
+    divider_y = layout["header_divider_y"]
+    draw.line(
+        (0, divider_y, width, divider_y),
+        fill=layout["header_divider_fill"],
+        width=layout["header_divider_w"],
+    )
+
+    brand_font = _load_index_font(layout["header_brand_font_size"], bold=True)
+    title_font = _load_index_font(layout["header_title_font_size"], bold=True)
+    meta_font = _load_index_font(layout["header_meta_font_size"])
+    date_font = _load_index_font(layout["header_date_font_size"])
+    draw.text(
+        (layout["header_brand_x"], layout["header_brand_y"]),
+        layout["header_brand_text"],
+        fill=layout["header_title_fill"],
+        font=brand_font,
+    )
+
+    right_w = layout["header_right_w"]
+    right_x = max(layout["header_brand_x"], width - right_w - layout["header_right_x_offset"])
+    title = _ellipsize(draw, roll["title"] or film_model or "135 INDEX", title_font, right_w)
+    meta = f"{film_model or roll['film_type'] or 'FILM 135'}  ISO {roll['iso'] or '-'}  {roll['camera_model'] or '-'}"
+    date = f"{roll['main_location'] or '-'}  {roll['start_date'] or '-'} - {roll['end_date'] or '-'}"
+    draw.text((right_x, layout["header_title_y"]), title, fill=layout["header_title_fill"], font=title_font)
+    draw.text((right_x, layout["header_meta_y"]), _ellipsize(draw, meta, meta_font, right_w), fill=layout["header_meta_fill"], font=meta_font)
+    draw.text((right_x, layout["header_date_y"]), _ellipsize(draw, date, date_font, right_w), fill=layout["header_date_fill"], font=date_font)
+
+
+def _resolve_strip_template_dir(roll, options: dict) -> str:
+    film_format = roll["film_format"] if roll else "135"
+    template_name = options.get("strip_template") or ""
+    format_dir = _get_strip_format_dir(film_format)
+    template_dir = ""
+    if template_name and os.path.isdir(format_dir):
+        for name in os.listdir(format_dir):
+            candidate = os.path.join(format_dir, name)
+            if os.path.isdir(candidate) and _slugify(name) == template_name:
+                template_dir = candidate
+                break
+    if not template_dir:
+        raise ValueError("未找到可用的底片条模板，请先在模板目录中添加素材。")
+    return template_dir
+
+
+def _segment_filename(strip_index: int, frames_per_strip: int) -> str:
+    start = strip_index * frames_per_strip + 1
+    end = start + frames_per_strip - 1
+    return f"{start}-{end}.png"
+
+
+def _resolve_segment_template_path(template_dir: str, strip_index: int, frames_per_strip: int) -> str:
+    path = os.path.join(template_dir, _segment_filename(strip_index, frames_per_strip))
+    if not os.path.exists(path):
+        raise ValueError(f"底片条模板缺少文件：{os.path.basename(path)}")
+    return path
+
+
+def _resolve_shared_sprocket_path(film_format: str) -> str | None:
+    base_dir = _get_strip_format_dir(film_format)
+    for name in ("sprocket_strip.png", "sprocket.png"):
+        path = os.path.join(base_dir, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _draw_135_sheet_header_with_options(sheet: Image.Image, roll, options: dict):
+    layout = INDEX_135_LAYOUT
+    draw = ImageDraw.Draw(sheet)
+    width = sheet.width
+    header_h = INDEX_135_LAYOUT["header_h"]
+    draw.rectangle((0, 0, width, header_h), fill=_hex_to_rgb(options["header_bg_color"]))
+
+    brand_font = _load_index_font(layout["header_brand_font_size"], bold=True)
+    note_font = _load_index_font(layout["header_note_font_size"])
+    title_font = _load_index_font(layout["header_title_font_size"], bold=True)
+    meta_font = _load_index_font(layout["header_meta_font_size"])
+    date_font = _load_index_font(layout["header_date_font_size"])
+    extra_font = _load_index_font(layout["header_extra_font_size"])
+
+    left_w = max(720, width - layout["header_right_w"] - layout["header_right_x_offset"] - layout["header_brand_x"] * 2)
+    left_lines = [
+        (
+            _ellipsize(draw, options["header_brand"] or layout["header_brand_text"], brand_font, left_w),
+            brand_font,
+            layout["header_title_fill"],
+        )
+    ]
+    if options.get("header_note"):
+        left_lines.append((
+            _ellipsize(draw, options["header_note"], note_font, left_w),
+            note_font,
+            layout["header_meta_fill"],
+        ))
+    left_gap = layout["header_line_gap"]
+    left_h = sum(_text_height(draw, text, font) for text, font, _fill in left_lines) + left_gap * (len(left_lines) - 1)
+    left_y = max(0, (header_h - left_h) // 2)
+    for text, font, fill in left_lines:
+        draw.text((layout["header_brand_x"], left_y), text, fill=fill, font=font)
+        left_y += _text_height(draw, text, font) + left_gap
+
+    right_w = layout["header_right_w"]
+    right_x = max(layout["header_brand_x"], width - right_w - layout["header_right_x_offset"])
+    title = options["header_title"]
+    meta = f"{options['film_info'] or roll['film_type'] or 'FILM 135'}  ISO {roll['iso'] or '-'}"
+    date = f"{roll['main_location'] or '-'}  {roll['start_date'] or '-'} - {roll['end_date'] or '-'}"
+    extra = f"{roll['camera_model'] or '-'}  {roll['lens_model'] or '-'}"
+    right_lines = []
+    if title:
+        right_lines.append((_ellipsize(draw, title, title_font, right_w), title_font, layout["header_title_fill"]))
+    right_lines.extend([
+        (_ellipsize(draw, meta, meta_font, right_w), meta_font, layout["header_meta_fill"]),
+        (_ellipsize(draw, date, date_font, right_w), date_font, layout["header_meta_fill"]),
+        (_ellipsize(draw, extra, extra_font, right_w), extra_font, layout["header_meta_fill"]),
+    ])
+    right_gap = layout["header_line_gap"]
+    right_h = sum(_text_height(draw, text, font) for text, font, _fill in right_lines) + right_gap * (len(right_lines) - 1)
+    right_y = max(0, (header_h - right_h) // 2)
+    for text, font, fill in right_lines:
+        draw.text((right_x, right_y), text, fill=fill, font=font)
+        right_y += _text_height(draw, text, font) + right_gap
+
+
+def _make_135_strip(photos: list, strip_index: int, roll, film_model: str, options: dict) -> Image.Image:
+    layout = INDEX_135_LAYOUT
+    template_dir = _resolve_strip_template_dir(roll, options)
+    template_path = _resolve_segment_template_path(template_dir, strip_index, layout["frames_per_strip"])
+    with Image.open(template_path) as template:
+        strip = template.convert("RGBA")
+
+    for idx in range(layout["frames_per_strip"]):
+        photo = photos[idx] if idx < len(photos) else None
+        frame = _make_index_frame(photo, layout["photo_w"], layout["photo_h"]).convert("RGBA")
+        x = layout["photo_x"] + idx * layout["photo_step_x"]
+        strip.paste(frame, (x, layout["photo_y"]))
+
+    sprocket_path = _resolve_shared_sprocket_path(roll["film_format"])
+    if sprocket_path:
+        with Image.open(sprocket_path) as sprocket:
+            sprocket = sprocket.convert("RGBA")
+            _paste_rgba(strip, sprocket, (layout["sprocket_x"], layout["sprocket_top_y"]))
+            _paste_rgba(strip, sprocket, (layout["sprocket_x"], layout["sprocket_bottom_y"]))
+    return strip.convert("RGB")
+
+
+def _generate_index_sheet_legacy(roll_id: int, film_model: str | None = None) -> str:
+    """Generate a 135 film negative index sheet from six-frame strips."""
     ensure_dirs()
     roll = query_one("SELECT * FROM film_rolls WHERE id = ?", (roll_id,))
     photos = query_all("SELECT * FROM photos WHERE roll_id = ? ORDER BY frame_number", (roll_id,))
@@ -371,61 +676,30 @@ def generate_index_sheet(roll_id: int) -> str:
         raise ValueError("Roll not found")
     if not photos:
         raise ValueError("No photos in this roll")
+    film_format = (roll["film_format"] or "").lower()
+    if "120" in film_format:
+        raise ValueError("暂不支持生成120格式索引图。")
+    if _normalize_film_format(roll["film_format"]) == "135" and not _resolve_shared_sprocket_path(roll["film_format"]):
+        raise ValueError("135齿孔模板缺失，请在 assets/film_strips/135 中添加 sprocket_strip.png。")
 
-    cols = 6
-    frame_w, frame_h = 460, 306
-    frame_gap = 30
-    strip_pad_x = 28
-    page_margin_x = 34
-    header_h = 244
-    strip_gap = 44
-    strip_h = frame_h + 140
-    rows = (len(photos) + cols - 1) // cols
-    strip_w = cols * frame_w + (cols - 1) * frame_gap + strip_pad_x * 2
-    width = strip_w + page_margin_x * 2
-    height = header_h + rows * strip_h + (rows - 1) * strip_gap + 58
+    layout = INDEX_135_LAYOUT
+    per_strip = layout["frames_per_strip"]
+    strip_count = (len(photos) + per_strip - 1) // per_strip
+    strips = []
+    for strip_index in range(strip_count):
+        start = strip_index * per_strip
+        legacy_options = normalize_index_sheet_options({"film_info": film_model}, roll)
+        strips.append(_make_135_strip(photos[start:start + per_strip], strip_index, roll, film_model or "", legacy_options))
 
-    sheet = Image.new("RGB", (width, height), (250, 250, 246))
-    draw = ImageDraw.Draw(sheet)
-
-    font_brand = _load_index_font(72, bold=True)
-    font_title = _load_index_font(40, bold=True)
-    font_meta = _load_index_font(29)
-    font_small = _load_index_font(23)
-
-    draw.rectangle((0, 0, width, header_h), fill=(16, 16, 16))
-    draw.line((0, header_h - 7, width, header_h - 7), fill=(236, 236, 232), width=5)
-    draw.text((72, 54), "FilmLog", fill=(244, 244, 244), font=font_brand)
-
-    title = _ellipsize(draw, roll["title"], font_title, width - 1080)
-    meta_1 = f"{roll['film_type'] or 'Film'}  ISO {roll['iso'] or '-'}  {roll['camera_model'] or '-'}"
-    meta_2 = f"{roll['main_location'] or '-'}  {roll['start_date'] or '-'} - {roll['end_date'] or '-'}"
-    right_x = width - 760
-    draw.text((right_x, 50), title, fill=(246, 246, 242), font=font_title)
-    draw.text((right_x, 104), _ellipsize(draw, meta_1, font_meta, 700), fill=(190, 190, 182), font=font_meta)
-    draw.text((right_x, 148), _ellipsize(draw, meta_2, font_small, 700), fill=(150, 150, 142), font=font_small)
-
-    for idx, photo in enumerate(photos):
-        row, col = divmod(idx, cols)
-        strip_x = page_margin_x
-        strip_y = header_h + row * (strip_h + strip_gap)
-        if col == 0:
-            draw.rounded_rectangle(
-                (strip_x, strip_y, strip_x + strip_w, strip_y + strip_h),
-                radius=4,
-                fill=(1, 1, 1),
-                outline=(28, 28, 26),
-                width=2,
-            )
-            _draw_sprocket_row(draw, strip_x, strip_y + 15, strip_w, top=True)
-            _draw_sprocket_row(draw, strip_x, strip_y + strip_h - 49, strip_w, top=False)
-
-        frame_x = strip_x + strip_pad_x + col * (frame_w + frame_gap)
-        frame_y = strip_y + 70
-        frame = _make_index_frame(photo, frame_w, frame_h)
-        sheet.paste(frame, (frame_x, frame_y))
-        draw.rectangle((frame_x - 3, frame_y - 3, frame_x + frame_w + 2, frame_y + frame_h + 2), outline=(7, 7, 7), width=3)
-        draw.rectangle((frame_x, frame_y, frame_x + frame_w - 1, frame_y + frame_h - 1), outline=(44, 44, 40), width=1)
+    width = strips[0].width + layout["sheet_margin_x"] * 2
+    strips_h = sum(strip.height for strip in strips) + layout["sheet_strip_gap"] * (len(strips) - 1)
+    height = layout["header_h"] + strips_h + layout["sheet_margin_bottom"]
+    sheet = Image.new("RGB", (width, height), layout["sheet_bg"])
+    _draw_135_sheet_header(sheet, roll, film_model or "")
+    y = layout["header_h"]
+    for strip in strips:
+        sheet.paste(strip, (layout["sheet_margin_x"], y))
+        y += strip.height + layout["sheet_strip_gap"]
 
     out_name = f"roll_{roll_id}_index_{uuid.uuid4().hex[:8]}.jpg"
     out_abs = os.path.join(INDEX_DIR, out_name)
@@ -441,4 +715,76 @@ def generate_index_sheet(roll_id: int) -> str:
                 pass
     execute("DELETE FROM index_sheets WHERE roll_id = ?", (roll_id,))
     execute("INSERT INTO index_sheets(roll_id, file_path) VALUES (?, ?)", (roll_id, rel))
+    return rel
+
+
+def generate_index_sheet(roll_id: int, film_model: str | None = None, options: dict | None = None) -> str:
+    """Generate a 135 film negative index sheet from six-frame strips."""
+    ensure_dirs()
+    roll = query_one("SELECT * FROM film_rolls WHERE id = ?", (roll_id,))
+    photos = query_all("SELECT * FROM photos WHERE roll_id = ? ORDER BY frame_number", (roll_id,))
+    if not roll:
+        raise ValueError("Roll not found")
+    if not photos:
+        raise ValueError("No photos in this roll")
+    if len(photos) > INDEX_135_MAX_PHOTOS:
+        raise ValueError(f"图片数量过多，最多支持 {INDEX_135_MAX_PHOTOS} 张照片生成索引图。")
+    film_format = (roll["film_format"] or "").lower()
+    if "120" in film_format:
+        raise ValueError("暂不支持生成120格式索引图。")
+    if _normalize_film_format(roll["film_format"]) == "135" and not _resolve_shared_sprocket_path(roll["film_format"]):
+        raise ValueError("135齿孔模板缺失，请在 assets/film_strips/135 中添加 sprocket_strip.png。")
+
+    layout = INDEX_135_LAYOUT
+    raw_options = dict(options or {})
+    if film_model and "film_info" not in raw_options:
+        raw_options["film_info"] = film_model
+    merged_options = normalize_index_sheet_options(raw_options, roll)
+    per_strip = layout["frames_per_strip"]
+    strip_count = (len(photos) + per_strip - 1) // per_strip
+    strips = []
+    for strip_index in range(strip_count):
+        start = strip_index * per_strip
+        strips.append(_make_135_strip(
+            photos[start:start + per_strip],
+            strip_index,
+            roll,
+            merged_options["film_info"],
+            merged_options,
+        ))
+
+    border_size = merged_options["border_size"]
+    content_w = strips[0].width + layout["sheet_margin_x"] * 2
+    width = content_w + border_size * 2
+    header_h = merged_options["header_height"] if merged_options["show_header"] else 0
+    header_strip_gap = merged_options["strip_gap"] if header_h else 0
+    top_border = 0 if header_h else border_size
+    strips_h = sum(strip.height for strip in strips) + merged_options["strip_gap"] * (len(strips) - 1)
+    height = top_border + header_h + header_strip_gap + strips_h + border_size
+    sheet = Image.new("RGB", (width, height), _hex_to_rgb(merged_options["border_color"]))
+    if merged_options["show_header"]:
+        header = Image.new("RGB", (width, header_h), _hex_to_rgb(merged_options["header_bg_color"]))
+        _draw_135_sheet_header_with_options(header, roll, merged_options)
+        sheet.paste(header, (0, 0))
+
+    y = top_border + header_h + header_strip_gap
+    for strip in strips:
+        sheet.paste(strip, (border_size + layout["sheet_margin_x"], y))
+        y += strip.height + merged_options["strip_gap"]
+
+    out_name = f"roll_{roll_id}_index_{uuid.uuid4().hex[:8]}.jpg"
+    out_abs = os.path.join(INDEX_DIR, out_name)
+    sheet.save(out_abs, "JPEG", quality=94, optimize=True, progressive=True)
+    rel = relative_static_path(out_abs)
+    old_sheets = query_all("SELECT file_path FROM index_sheets WHERE roll_id = ?", (roll_id,))
+    for old in old_sheets:
+        old_abs = os.path.join(STATIC_DIR, old["file_path"])
+        if os.path.abspath(old_abs) != os.path.abspath(out_abs) and os.path.exists(old_abs):
+            try:
+                os.remove(old_abs)
+            except OSError:
+                pass
+    execute("DELETE FROM index_sheets WHERE roll_id = ?", (roll_id,))
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    execute("INSERT INTO index_sheets(roll_id, file_path, generated_at) VALUES (?, ?, ?)", (roll_id, rel, generated_at))
     return rel

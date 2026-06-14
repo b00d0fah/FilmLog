@@ -48,7 +48,9 @@ FilmLog_project/
 │   ├── uploads/            # 原图，运行数据
 │   ├── thumbs/             # 缩略图，运行数据
 │   └── index_sheets/       # 胶片索引图，运行数据
-├── assets/fonts/           # 可选字体目录
+├── assets/
+│   ├── film_strips/        # 索引图底片条模板与 135 齿孔模板
+│   └── fonts/              # 可选字体覆盖目录，仅提交 README 和 .gitkeep
 └── uml/                    # PlantUML 图源文件
 ```
 
@@ -131,6 +133,29 @@ static/thumbs/
 static/index_sheets/
 ```
 
+`assets/film_strips/` 是索引图生成所需的模板资产，应随源码一起部署。`assets/fonts/` 只是可选字体覆盖目录，Docker 镜像已安装 `fonts-noto-cjk`，通常不需要提交或部署字体文件。
+
+## 胶片索引图模板
+
+索引图模板放在 `assets/film_strips/`：
+
+```text
+assets/film_strips/
+├── 135/
+│   ├── sprocket_strip.png
+│   └── kodak-gc-400/
+│       ├── 1-6.png
+│       ├── 7-12.png
+│       └── ...
+└── 120/
+```
+
+135 模板规则：
+
+- 每个胶片类型一个目录，目录名使用小写 ASCII 和连字符，例如 `kodak-gc-400`。
+- 每条底片模板最多嵌入 6 张照片，文件名按帧段命名：`1-6.png`、`7-12.png`、`13-18.png`，直到 `37-42.png`。
+- `assets/film_strips/135/sprocket_strip.png` 是 135 模板共用齿孔叠加层。
+- 生成时先嵌入照片，再叠加齿孔；超过 42 张照片会拒绝生成。
 
 ## 群晖 NAS 部署状态
 
@@ -171,6 +196,8 @@ static/thumbs/
 static/index_sheets/
 ```
 
+索引图模板资产 `assets/film_strips/` 建议随代码一起备份或纳入版本库；运行数据备份不包含模板时，恢复后也必须从代码包补齐该目录。
+
 建议在备份或迁移前先停止容器，避免 SQLite 正在写入：
 
 ```bash
@@ -191,9 +218,12 @@ PlantUML 源文件位于 `uml/`：
 - `class_diagram.puml`：核心数据模型和服务关系。
 - `sequence_diagram.puml`：照片导入、AI 分析和索引图生成流程。
 
-## 开源与安全
+## 发布前检查
 
-发布源码前请阅读 [OPEN_SOURCE.md](OPEN_SOURCE.md)。重点原则：
+- 不提交 `.env`、数据库、上传原图、缩略图、已生成索引图和 API Key CSV。
+- 不提交 `assets/fonts/` 下的字体文件；公开仓库只保留 `README.md` 和 `.gitkeep`。
+- 确认 `assets/film_strips/` 中的底片条模板和 `sprocket_strip.png` 已纳入代码包。
+- 推送前运行 `python -m py_compile app.py utils.py db.py`。
 
 ## 许可
 
