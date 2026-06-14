@@ -1,0 +1,37 @@
+@startuml
+left to right direction
+
+actor "胶片摄影用户" as User
+actor "千问 / DashScope" as Qwen
+
+rectangle "FilmLog" {
+  usecase "管理胶卷档案" as UC_Roll
+  usecase "录入冲扫信息" as UC_Scan
+  usecase "批量导入照片" as UC_Upload
+  usecase "生成缩略图" as UC_Thumb
+  usecase "编辑照片信息" as UC_Photo
+  usecase "评分与精选" as UC_Score
+  usecase "管理标签" as UC_Tag
+  usecase "生成胶片索引图" as UC_Index
+  usecase "搜索和筛选" as UC_Search
+  usecase "查看统计复盘" as UC_Stats
+  usecase "AI 分析照片" as UC_AIPhoto
+  usecase "AI 生成胶卷复盘" as UC_AIRoll
+}
+
+User --> UC_Roll
+User --> UC_Scan
+User --> UC_Upload
+UC_Upload ..> UC_Thumb : <<include>>
+User --> UC_Photo
+User --> UC_Score
+User --> UC_Tag
+User --> UC_Index
+User --> UC_Search
+User --> UC_Stats
+User --> UC_AIPhoto
+User --> UC_AIRoll
+
+Qwen --> UC_AIPhoto
+Qwen --> UC_AIRoll
+@enduml

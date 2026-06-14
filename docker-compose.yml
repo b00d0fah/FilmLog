@@ -1,0 +1,22 @@
+services:
+  filmlog:
+    build: .
+    container_name: filmlog
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      FILMLOG_SECRET_KEY: "${FILMLOG_SECRET_KEY:-change-me}"
+      FILMLOG_DB_PATH: "/app/filmlog.db"
+      FILMLOG_MAX_CONTENT_MB: "600"
+      FILMLOG_DEBUG: "0"
+      DASHSCOPE_API_KEY: "${DASHSCOPE_API_KEY:-}"
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+      QWEN_TEXT_MODEL: "${QWEN_TEXT_MODEL:-qwen-plus}"
+      QWEN_VISION_MODEL: "${QWEN_VISION_MODEL:-qwen-vl-plus}"
+      QWEN_ENABLE_VISION: "${QWEN_ENABLE_VISION:-1}"
+    volumes:
+      - ./filmlog.db:/app/filmlog.db
+      - ./static/uploads:/app/static/uploads
+      - ./static/thumbs:/app/static/thumbs
+      - ./static/index_sheets:/app/static/index_sheets

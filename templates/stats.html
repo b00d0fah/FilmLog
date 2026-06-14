@@ -1,0 +1,177 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero">
+    <div>
+        <p class="eyebrow">Viewing room</p>
+        <h1>观片</h1>
+        <p class="hero-line">把胶卷、机身、冲扫店、标签与高分画面摊成一张工作印样，从反复选择里看见拍摄习惯。</p>
+    </div>
+</section>
+
+<section class="stats-overview">
+    <article><span>{{ film_stats|length }}</span><small>胶卷型号</small></article>
+    <article><span>{{ camera_stats|length }}</span><small>相机型号</small></article>
+    <article><span>{{ photo_total }}</span><small>照片总数</small></article>
+    <article><span>{{ masterpiece_count }}</span><small>大师作品数</small></article>
+</section>
+
+<section class="stats-layout">
+    <div class="panel chart-panel">
+        <h2>胶卷表现</h2>
+        <table>
+            <tr><th>胶卷型号</th><th>照片数</th><th>最终评分</th></tr>
+            {% for r in film_stats %}<tr><td>{{ r.name }}</td><td>{{ r.photo_count }}</td><td>{{ r.avg_score or '-' }}</td></tr>{% endfor %}
+        </table>
+    </div>
+    <div class="panel chart-panel">
+        <h2>机身习惯</h2>
+        <table>
+            <tr><th>相机</th><th>胶卷数</th><th>最终评分</th></tr>
+            {% for r in camera_stats %}<tr><td>{{ r.name }}</td><td>{{ r.roll_count }}</td><td>{{ r.avg_score or '-' }}</td></tr>{% endfor %}
+        </table>
+    </div>
+    <div class="panel chart-panel">
+        <h2>冲扫印象</h2>
+        <table>
+            <tr><th>店铺</th><th>胶卷数</th><th>最终评分</th></tr>
+            {% for r in lab_stats %}<tr><td>{{ r.name }}</td><td>{{ r.roll_count }}</td><td>{{ r.avg_score or '-' }}</td></tr>{% endfor %}
+        </table>
+    </div>
+    <div class="panel chart-panel tag-panel">
+        <div class="section-title">
+            <h2>标签分组</h2>
+            <a class="btn small" href="{{ url_for('tag_blacklist') }}">黑名单</a>
+        </div>
+        <table>
+            <tr><th>标签</th><th>照片数</th></tr>
+            {% for r in tag_stats %}
+            <tr class="{% if loop.index > 12 %}tag-extra{% endif %}">
+                <td>{{ r.name }}</td>
+                <td>{{ r.photo_count }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% if tag_stats_has_more %}
+        <button class="btn small tag-toggle" type="button" data-expanded="false">展开全部标签</button>
+        {% endif %}
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-title">
+        <h2>精选作品</h2>
+        <form class="limit-form stats-limit" method="get">
+            <input type="hidden" name="masterpiece_limit" value="{{ masterpiece_limit }}">
+            <input type="hidden" name="best_limit" value="{{ annual_best_limit }}">
+            <input type="hidden" name="year" value="{{ selected_year }}">
+            <label>显示数量
+                <select name="featured_limit" onchange="this.form.submit()">
+                    {% for option in work_limit_options %}
+                    <option value="{{ option }}" {% if featured_limit == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                    <option value="{{ work_all_limit_value }}" {% if featured_limit == work_all_limit_value %}selected{% endif %}>全部</option>
+                </select>
+            </label>
+        </form>
+    </div>
+    <div class="photo-grid">
+        {% for p in featured_photos %}
+        <article class="photo-card">
+            <a class="photo-link" href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="精选作品">
+                <span class="photo-overlay"><span>编辑参数</span></span>
+            </a>
+            <div class="photo-info"><strong>{{ p.roll_title }} #{{ p.frame_number }}</strong><span>{{ p.avg_score }}</span></div>
+        </article>
+        {% else %}
+        <div class="empty">暂无标记为精选的作品。</div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-title">
+        <h2>大师作品（评分 ≥ {{ masterpiece_threshold }}）</h2>
+        <form class="limit-form stats-limit" method="get">
+            <input type="hidden" name="featured_limit" value="{{ featured_limit }}">
+            <input type="hidden" name="best_limit" value="{{ annual_best_limit }}">
+            <input type="hidden" name="year" value="{{ selected_year }}">
+            <label>显示数量
+                <select name="masterpiece_limit" onchange="this.form.submit()">
+                    {% for option in work_limit_options %}
+                    <option value="{{ option }}" {% if masterpiece_limit == option %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                    <option value="{{ work_all_limit_value }}" {% if masterpiece_limit == work_all_limit_value %}selected{% endif %}>全部</option>
+                </select>
+            </label>
+        </form>
+    </div>
+    <div class="photo-grid">
+        {% for p in masterpiece_photos %}
+        <article class="photo-card">
+            <a class="photo-link" href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="大师作品">
+                <span class="photo-overlay"><span>编辑参数</span></span>
+            </a>
+            <div class="photo-info"><strong>{{ p.roll_title }} #{{ p.frame_number }}</strong><span>{{ p.avg_score }}</span></div>
+        </article>
+        {% else %}
+        <div class="empty">暂无评分达到 {{ masterpiece_threshold }} 的大师作品。</div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-title">
+        <h2>{{ annual_title_year }}最佳作品（TOP {{ annual_best_limit }}）</h2>
+        <form class="limit-form stats-limit" method="get">
+            <input type="hidden" name="featured_limit" value="{{ featured_limit }}">
+            <input type="hidden" name="masterpiece_limit" value="{{ masterpiece_limit }}">
+            <div class="limit-controls">
+                <label>年份
+                    <select name="year" onchange="this.form.submit()">
+                        <option value="" {% if not selected_year %}selected{% endif %}>全部年份</option>
+                        {% for year in annual_years %}
+                        <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>显示数量
+                    <select name="best_limit" onchange="this.form.submit()">
+                        {% for option in work_limit_options %}
+                        <option value="{{ option }}" {% if annual_best_limit == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </form>
+    </div>
+    <div class="photo-grid">
+        {% for p in annual_best_photos %}
+        <article class="photo-card">
+            <a class="photo-link" href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="年度最佳作品">
+                <span class="photo-overlay"><span>编辑参数</span></span>
+            </a>
+            <div class="photo-info"><strong>{{ p.roll_title }} #{{ p.frame_number }}</strong><span>{{ p.avg_score }}</span></div>
+        </article>
+        {% else %}
+        <div class="empty">暂无照片评分数据。</div>
+        {% endfor %}
+    </div>
+</section>
+<script>
+document.querySelectorAll(".tag-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+        const panel = button.closest(".tag-panel");
+        const expanded = button.dataset.expanded === "true";
+        panel.querySelectorAll(".tag-extra").forEach((row) => {
+            row.hidden = expanded;
+        });
+        button.dataset.expanded = expanded ? "false" : "true";
+        button.textContent = expanded ? "展开全部标签" : "收起标签";
+    });
+});
+
+</script>
+{% endblock %}

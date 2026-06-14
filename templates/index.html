@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% block content %}
+{% if view == 'rolls' %}
+<section class="hero compact-hero">
+    <div>
+        <p class="eyebrow">Archive</p>
+        <h1>档案</h1>
+        <p class="hero-line">按胶卷、机身、地点与标签归档，让每一卷像底片袋一样安静可查。</p>
+    </div>
+</section>
+
+<section class="library-summary">
+    <article><strong>{{ summary.roll_count }}</strong><span>胶卷档案</span></article>
+    <article><strong>{{ summary.photo_count }}</strong><span>照片总数</span></article>
+    <article><strong>{{ summary.featured_count }}</strong><span>精选作品</span></article>
+    <article><strong>{{ summary.top_film }}</strong><span>常用胶卷</span></article>
+</section>
+
+<section class="panel filter-panel">
+    <form class="filter-form" method="get">
+        <input type="hidden" name="view" value="rolls">
+        <input type="text" name="q" value="{{ q }}" placeholder="搜索胶卷、照片地点、备注、文件名">
+        <select name="status">
+            <option value="">全部状态</option>
+            {% for s in ['拍摄中','待冲扫','已归档'] %}
+            <option value="{{ s }}" {% if status==s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <select name="tag">
+            <option value="">全部标签</option>
+            {% for t in tags %}
+            <option value="{{ t.name }}" {% if tag==t.name %}selected{% endif %}>{{ t.name }}{% if t.photo_count %} · {{ t.photo_count }}{% endif %}</option>
+            {% endfor %}
+        </select>
+        <button class="btn" type="submit">筛选</button>
+        <a class="btn light" href="{{ url_for('index', view='rolls') }}">清空筛选</a>
+    </form>
+</section>
+
+{% if q or tag or status %}
+<section class="panel">
+    <div class="section-title">
+        <div>
+            <h2>匹配照片</h2>
+            <p class="muted">从胶卷档案与照片标签里取样，找到需要回看的画面。</p>
+        </div>
+        <span class="badge">{{ filtered_photos|length }} 张</span>
+    </div>
+    <div class="photo-grid filter-photo-grid">
+        {% for p in filtered_photos %}
+        <article class="photo-card">
+            <a class="photo-link" href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="{{ p.roll_title }} #{{ p.frame_number }}">
+                <span class="photo-overlay">
+                    <span>评分 {{ p.avg_score }}</span>
+                    {% if p.is_featured %}<span>精选</span>{% endif %}
+                    <span>编辑</span>
+                </span>
+            </a>
+            <div class="photo-info">
+                <strong>{{ p.roll_title }} #{{ p.frame_number or '-' }}</strong>
+                <span>{{ p.avg_score }}</span>
+            </div>
+            <p class="muted small">
+                {{ p.location or '未填写地点' }}
+                {% if p.shooting_time %} · {{ p.shooting_time }}{% endif %}
+                {% if p.original_filename %} · {{ p.original_filename }}{% endif %}
+            </p>
+            <div class="tags">
+                {% for photo_tag in p.tags[:5] %}<span>{{ photo_tag }}</span>{% endfor %}
+            </div>
+        </article>
+        {% else %}
+        <div class="empty">没有匹配照片。可以换一个标签或关键词。</div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="roll-list library-list" id="rolls">
+    {% for roll in rolls %}
+    <article class="roll-card">
+        <div class="roll-card-main">
+            <div class="roll-card-head">
+                <div>
+                    <h2><a href="{{ url_for('roll_detail', roll_id=roll.id) }}">{{ roll.title }}</a></h2>
+                    <div class="roll-card-meta">
+                        <p>{{ roll.film_type or '未填写胶卷型号' }} · ISO {{ roll.iso or '-' }} · {{ roll.camera_model or '未填写相机' }}</p>
+                    </div>
+                </div>
+                <div class="roll-card-side">
+                    <span class="badge">{{ roll.status }}</span>
+                    <form action="{{ url_for('roll_delete', roll_id=roll.id) }}" method="post" onsubmit="return confirm('确定删除这卷胶卷及其照片记录吗？')">
+                        <button class="btn small danger" type="submit">删除胶卷</button>
+                    </form>
+                </div>
+            </div>
+            <p class="muted">{{ roll.main_location or '未填写地点' }} · {{ roll.start_date or '-' }} ~ {{ roll.end_date or '-' }} · {{ roll.photo_count or 0 }} 张</p>
+            <div class="roll-preview-strip">
+                {% for thumb in roll.preview_thumbs %}
+                <a href="{{ url_for('photo_edit', photo_id=thumb.id) }}">
+                    <img src="{{ url_for('static', filename=thumb.thumb_path) }}" alt="{{ roll.title }} 预览">
+                </a>
+                {% else %}
+                <span>暂无照片预览</span>
+                {% endfor %}
+            </div>
+        </div>
+    </article>
+    {% else %}
+    <div class="empty">还没有胶卷档案。去显影页建立第一卷，再导入冲扫照片。</div>
+    {% endfor %}
+</section>
+{% else %}
+<section class="dashboard-hero">
+    <div>
+        <p class="eyebrow">Overview</p>
+        <h1>总览</h1>
+        <p class="hero-line">汇拢最近胶卷、精选画面与复盘线索，在一张暗房工作台上看清全局。</p>
+    </div>
+    <div class="dashboard-actions">
+        <a class="btn" href="{{ url_for('index', view='rolls') }}">进入档案</a>
+    </div>
+</section>
+
+<section class="dashboard-metrics">
+    <article class="metric-card"><span>{{ summary.roll_count }}</span><small>档案卷数</small></article>
+    <article class="metric-card"><span>{{ summary.photo_count }}</span><small>照片总数</small></article>
+    <article class="metric-card"><span>{{ summary.featured_count }}</span><small>精选作品</small></article>
+    <article class="metric-card"><span>{{ summary.best_photo_score }}</span><small>当前抽样评分</small></article>
+</section>
+
+<section class="dashboard-layout">
+    <article class="panel hero-work hero-work-{{ summary.best_photo_orientation }}">
+        <div>
+            <p class="eyebrow">Featured pull</p>
+            <h2>{{ summary.best_photo_title }}</h2>
+            <p class="muted">{{ summary.best_photo_description }}</p>
+        </div>
+        {% if summary.best_photo_image %}
+        <a class="hero-work-link" href="{{ url_for('photo_edit', photo_id=summary.best_photo_id) }}">
+            <img src="{{ url_for('static', filename=summary.best_photo_image) }}" alt="{{ summary.best_photo_title }}">
+        </a>
+        {% else %}
+        <div class="empty">暂无已评分照片。</div>
+        {% endif %}
+    </article>
+
+    <aside class="panel insight-panel">
+        <h2>暗房线索</h2>
+        <dl class="insight-list">
+            <div><dt>最常用胶卷</dt><dd>{{ summary.top_film }} · {{ summary.top_film_count }} 卷</dd></div>
+            <div><dt>最常用相机</dt><dd>{{ summary.camera_top }} · {{ summary.camera_top_count }} 卷</dd></div>
+            <div><dt>最新档案</dt><dd>{{ summary.latest_roll_title }}</dd></div>
+            <div><dt>最近 AI 复盘</dt><dd>{{ summary.latest_summary_title }}{% if summary.latest_summary_at %} · {{ summary.latest_summary_at }}{% endif %}</dd></div>
+        </dl>
+    </aside>
+</section>
+
+<section class="dashboard-layout secondary">
+    <section class="panel">
+        <div class="section-title">
+            <div>
+                <h2>新近入库</h2>
+                <p class="muted">按导入时间排列，适合继续补充序号、地点、评分与标签。</p>
+            </div>
+        </div>
+        <div class="mini-photo-strip">
+            {% for p in recent_photos %}
+            <a href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="{{ p.roll_title }} #{{ p.frame_number }}">
+                <span>{{ p.roll_title }} #{{ p.frame_number or '-' }}</span>
+            </a>
+            {% else %}
+            <div class="empty">暂无照片。先进入某卷档案导入冲扫文件。</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-title">
+            <div>
+                <h2>近六卷</h2>
+            </div>
+        </div>
+        <div class="roll-timeline">
+            {% for roll in recent_rolls %}
+            <a href="{{ url_for('roll_detail', roll_id=roll.id) }}">
+                <strong>{{ roll.title }}</strong>
+                <span>{{ roll.film_type or '未填写胶卷' }} · {{ roll.photo_count or 0 }} 张 · 评分 {{ roll.avg_score or '-' }}</span>
+            </a>
+            {% else %}
+            <div class="empty">还没有胶卷档案。先去显影页建立一卷，再导入冲扫照片。</div>
+            {% endfor %}
+        </div>
+    </section>
+</section>
+{% endif %}
+{% endblock %}

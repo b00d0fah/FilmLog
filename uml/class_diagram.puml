@@ -1,0 +1,80 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+class FilmRoll {
+  id
+  title
+  film_type
+  iso
+  camera_model
+  lens_model
+  film_format
+  status
+  start_date
+  end_date
+  main_location
+}
+
+class DevelopScan {
+  roll_id
+  lab_name
+  process_type
+  push_pull
+  scanner_model
+  file_format
+  scan_date
+}
+
+class Photo {
+  roll_id
+  frame_number
+  image_path
+  thumb_path
+  shooting_time
+  location
+  tech_score
+  composition_score
+  color_score
+  emotion_score
+  is_featured
+}
+
+class Tag {
+  name
+}
+
+class IndexSheet {
+  roll_id
+  file_path
+  generated_at
+}
+
+class AIRollSummary {
+  roll_id
+  summary
+  generated_at
+}
+
+class ImageTools {
+  save_photo_file()
+  generate_index_sheet()
+  final_score_from_parts()
+}
+
+class QwenService {
+  analyze_photo_with_qwen()
+  generate_roll_summary_with_qwen()
+  compress_image_for_vision()
+}
+
+FilmRoll "1" -- "0..*" Photo
+FilmRoll "1" -- "0..1" DevelopScan
+FilmRoll "1" -- "0..*" IndexSheet
+FilmRoll "1" -- "0..*" AIRollSummary
+Photo "0..*" -- "0..*" Tag
+
+ImageTools ..> Photo
+ImageTools ..> IndexSheet
+QwenService ..> Photo
+QwenService ..> AIRollSummary
+@enduml

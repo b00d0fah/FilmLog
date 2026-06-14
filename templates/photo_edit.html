@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="photo-edit-page">
+    <div class="panel image-panel photo-preview-panel">
+        <button class="photo-zoom-source" type="button" data-zoom-src="{{ url_for('static', filename=photo.image_path) }}" aria-label="查看大图">
+            <img src="{{ url_for('static', filename=photo.image_path) }}" alt="photo" loading="eager" decoding="async">
+            <span class="photo-loupe" aria-hidden="true"></span>
+        </button>
+        <div class="photo-file-info">
+            <span>原始文件：{{ photo.original_filename }}</span>
+            <span>{{ '%.2f'|format(photo.file_size_mb or 0) }}MB</span>
+            <span>{{ photo.width }}x{{ photo.height }}</span>
+        </div>
+    </div>
+
+    <div class="photo-edit-stack">
+        <div class="panel">
+            <h1>照片信息</h1>
+
+            <section class="ai-box">
+                <div class="section-title compact">
+                    <div>
+                        <h2>分析</h2>
+                    </div>
+                    {% if qwen_ready %}
+                    <form action="{{ url_for('photo_ai_analyze', photo_id=photo.id) }}" method="post" data-ai-form>
+                        <button class="btn primary" type="submit">分析照片</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if not qwen_ready %}
+                <div class="notice">还没有配置千问 API。请复制 .env.example 为 .env，填写 DASHSCOPE_API_KEY，或运行 setup_env_from_csv.py。</div>
+                {% endif %}
+                {% if photo.ai_description %}
+                <div class="ai-result">
+                    <p><strong>描述：</strong>{{ photo.ai_description }}</p>
+                    <p><strong>推荐标签：</strong>{{ photo.ai_suggested_tags or '-' }}</p>
+                    <p><strong>分类原因：</strong>{{ photo.ai_reason or '-' }}</p>
+                    <p><strong>评分依据：</strong>{{ photo.ai_score_reason or '-' }}</p>
+                    <p class="muted">生成时间：{{ photo.ai_generated_at or '-' }}</p>
+                </div>
+                {% else %}
+                <p class="muted">暂无分析结果。</p>
+                {% endif %}
+            </section>
+
+            <form method="post" class="form-grid">
+                <label>序号<input type="number" name="frame_number" value="{{ photo.frame_number or '' }}"></label>
+                <label>拍摄时间<input name="shooting_time" value="{{ photo.shooting_time or '' }}" placeholder="2026-06-01 下午"></label>
+                <label class="full">地点<input name="location" value="{{ photo.location or '' }}" placeholder="上海武康路"></label>
+                <label>光圈<input name="aperture" value="{{ photo.aperture or '' }}" placeholder="F2.8"></label>
+                <label>快门<input name="shutter_speed" value="{{ photo.shutter_speed or '' }}" placeholder="1/125s"></label>
+                <label>曝光补偿<input name="exposure_compensation" value="{{ photo.exposure_compensation or '' }}" placeholder="+1 / -0.5"></label>
+                <label>技术评分
+                    <select name="tech_score">{% for i in score_options %}<option value="{{ i }}" {% if photo.tech_score|float==i %}selected{% endif %}>{{ '%.1f'|format(i) }} 分</option>{% endfor %}</select>
+                </label>
+                <label>构图评分
+                    <select name="composition_score">{% for i in score_options %}<option value="{{ i }}" {% if photo.composition_score|float==i %}selected{% endif %}>{{ '%.1f'|format(i) }} 分</option>{% endfor %}</select>
+                </label>
+                <label>色彩评分
+                    <select name="color_score">{% for i in score_options %}<option value="{{ i }}" {% if photo.color_score|float==i %}selected{% endif %}>{{ '%.1f'|format(i) }} 分</option>{% endfor %}</select>
+                </label>
+                <label>情绪表达
+                    <select name="emotion_score">{% for i in score_options %}<option value="{{ i }}" {% if photo.emotion_score|float==i %}selected{% endif %}>{{ '%.1f'|format(i) }} 分</option>{% endfor %}</select>
+                </label>
+                <label class="checkbox full"><input type="checkbox" name="is_featured" {% if photo.is_featured %}checked{% endif %}> 标记为精选作品</label>
+                <label class="full">自定义标签<input name="tags" value="{{ tags }}" placeholder="风景, 人像, 街拍, 夜景"></label>
+                <label class="full">备注 / 感想<textarea name="note" rows="5">{{ photo.note or '' }}</textarea></label>
+                <div class="form-actions full">
+                    <button class="btn primary" type="submit">保存照片信息</button>
+                    <a class="btn light" href="{{ url_for('roll_detail', roll_id=photo.roll_id) }}">返回</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+<div class="photo-lightbox" aria-hidden="true">
+    <button class="photo-lightbox-close" type="button" aria-label="关闭大图">×</button>
+    <img src="" alt="photo">
+</div>
+
+<script>
+(() => {
+    const source = document.querySelector(".photo-zoom-source");
+    const loupe = document.querySelector(".photo-loupe");
+    const lightbox = document.querySelector(".photo-lightbox");
+    const lightboxImage = lightbox?.querySelector("img");
+    const closeButton = lightbox?.querySelector(".photo-lightbox-close");
+
+    if (!source || !loupe || !lightbox || !lightboxImage || !closeButton) return;
+
+    const zoomSrc = source.dataset.zoomSrc;
+    loupe.style.backgroundImage = `url("${zoomSrc}")`;
+
+    const updateLoupe = (event) => {
+        const rect = source.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width) * 100;
+        const y = ((event.clientY - rect.top) / rect.height) * 100;
+        const loupeSize = loupe.offsetWidth / 2;
+        loupe.style.left = `${event.clientX - rect.left - loupeSize}px`;
+        loupe.style.top = `${event.clientY - rect.top - loupeSize}px`;
+        loupe.style.backgroundPosition = `${x}% ${y}%`;
+    };
+
+    source.addEventListener("pointermove", (event) => {
+        if (event.pointerType === "touch") return;
+        updateLoupe(event);
+        source.classList.add("is-loupe-active");
+    });
+
+    source.addEventListener("pointerleave", () => {
+        source.classList.remove("is-loupe-active");
+    });
+
+    source.addEventListener("click", () => {
+        lightboxImage.src = zoomSrc;
+        lightbox.classList.add("is-open");
+        lightbox.setAttribute("aria-hidden", "false");
+        closeButton.focus();
+    });
+
+    const closeLightbox = () => {
+        lightbox.classList.remove("is-open");
+        lightbox.setAttribute("aria-hidden", "true");
+        lightboxImage.removeAttribute("src");
+        source.focus();
+    };
+
+    closeButton.addEventListener("click", closeLightbox);
+    lightbox.addEventListener("click", (event) => {
+        if (event.target === lightbox) closeLightbox();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && lightbox.classList.contains("is-open")) {
+            closeLightbox();
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title or 'FilmLog 光影档案' }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <a href="{{ url_for('index') }}">FilmLog</a>
+        <span>定格光影瞬间</span>
+    </div>
+    <nav>
+        <a href="{{ url_for('index') }}">总览</a>
+        <a href="{{ url_for('index', view='rolls') }}">档案</a>
+        <a href="{{ url_for('roll_new') }}">显影</a>
+        <a href="{{ url_for('stats') }}">观片</a>
+    </nav>
+</header>
+<main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="messages">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    <div class="messages" data-session-messages></div>
+    {% block content %}{% endblock %}
+</main>
+<footer class="footer">FilmLog · 从拍摄、冲扫到观片，把每一卷留成可回看的光影档案</footer>
+<script>
+(() => {
+    const uploadFlashKey = "filmlog-upload-message";
+    const uploadFlashRaw = sessionStorage.getItem(uploadFlashKey);
+    if (uploadFlashRaw) {
+        sessionStorage.removeItem(uploadFlashKey);
+        try {
+            const uploadFlash = JSON.parse(uploadFlashRaw);
+            const messages = document.querySelector("[data-session-messages]");
+            if (messages && uploadFlash.message) {
+                const item = document.createElement("div");
+                item.className = `alert alert-${uploadFlash.category || "success"}`;
+                item.textContent = uploadFlash.message;
+                messages.appendChild(item);
+            }
+        } catch {
+            // Ignore malformed session messages.
+        }
+    }
+
+    const key = `filmlog-scroll:${location.pathname}`;
+
+    const saveScroll = () => {
+        sessionStorage.setItem(key, JSON.stringify({
+            y: window.scrollY,
+            at: Date.now()
+        }));
+    };
+
+    const restoreScroll = () => {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return;
+        let saved;
+        try {
+            saved = JSON.parse(raw);
+        } catch {
+            sessionStorage.removeItem(key);
+            return;
+        }
+        if (!saved || Date.now() - saved.at > 15000) {
+            sessionStorage.removeItem(key);
+            return;
+        }
+        requestAnimationFrame(() => {
+            window.scrollTo({ top: saved.y, left: 0, behavior: "auto" });
+            setTimeout(() => {
+                window.scrollTo({ top: saved.y, left: 0, behavior: "auto" });
+                sessionStorage.removeItem(key);
+            }, 120);
+        });
+    };
+
+    document.addEventListener("submit", (event) => {
+        if (event.target instanceof HTMLFormElement) {
+            saveScroll();
+        }
+    }, true);
+
+    document.addEventListener("change", (event) => {
+        const field = event.target;
+        if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)) return;
+        if (field.form && field.form.method.toLowerCase() === "get") {
+            saveScroll();
+        }
+    }, true);
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", restoreScroll, { once: true });
+    } else {
+        restoreScroll();
+    }
+})();
+</script>
+</body>
+</html>

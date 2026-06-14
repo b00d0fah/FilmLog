@@ -1,0 +1,377 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="roll-header">
+    <div>
+        <p class="eyebrow">Roll archive</p>
+        <h1>{{ roll.title }}</h1>
+        <p>{{ roll.film_type or '-' }} · ISO {{ roll.iso or '-' }} · {{ roll.camera_model or '-' }} · {{ roll.film_format or '-' }}</p>
+        <p class="muted">{{ roll.main_location or '-' }} · {{ roll.start_date or '-' }} ~ {{ roll.end_date or '-' }}</p>
+    </div>
+    <div class="actions">
+        <span class="badge">{{ roll.status }}</span>
+        <a class="btn" href="{{ url_for('roll_edit', roll_id=roll.id) }}">编辑胶卷</a>
+        <a class="btn" href="{{ url_for('scan_edit', roll_id=roll.id) }}">冲扫信息</a>
+        <form action="{{ url_for('roll_delete', roll_id=roll.id) }}" method="post" onsubmit="return confirm('确定删除这卷胶卷及其照片记录吗？')">
+            <button class="btn danger" type="submit">删除胶卷</button>
+        </form>
+    </div>
+</section>
+
+<section class="stats-row roll-metrics">
+    <div class="stat-card"><span>{{ roll_stats.photo_count }}</span><small>照片张数</small></div>
+    <div class="stat-card"><span>{{ roll_stats.featured_count }}</span><small>精选作品</small></div>
+    <div class="stat-card"><span>{{ roll_stats.avg_score or '-' }}</span><small>最终评分</small></div>
+</section>
+
+<section class="detail-grid">
+    <div class="panel">
+        <h2>胶卷信息</h2>
+        <p><strong>镜头：</strong>{{ roll.lens_model or '-' }}</p>
+        <p><strong>相机机型：</strong>{{ roll.camera_model or '-' }}</p>
+        <p><strong>备注：</strong>{{ roll.note or '-' }}</p>
+    </div>
+    <div class="panel">
+        <h2>冲扫信息</h2>
+        {% if scan %}
+        <p><strong>店铺：</strong>{{ scan.lab_name or '-' }}</p>
+        <p><strong>工艺：</strong>{{ scan.process_type or '-' }} · {{ scan.push_pull or '-' }}</p>
+        <p><strong>扫描仪：</strong>{{ scan.scanner_model or '-' }} · {{ scan.file_format or '-' }}</p>
+        <p><strong>评价：</strong>{{ scan.comment or '-' }}</p>
+        {% else %}
+        <p class="muted">暂无冲扫信息。</p>
+        {% endif %}
+    </div>
+</section>
+
+<section class="panel ai-panel">
+    <div class="section-title">
+        <div>
+            <h2>AI 胶卷复盘</h2>
+            <p class="muted">基于胶卷信息、冲扫信息、照片评分和标签，调用千问生成本卷复盘建议。</p>
+        </div>
+        {% if qwen_ready %}
+        <form action="{{ url_for('roll_ai_summary', roll_id=roll.id) }}" method="post" data-ai-form>
+            <button class="btn primary" type="submit">生成 / 更新 AI 复盘</button>
+        </form>
+        {% endif %}
+    </div>
+    {% if not qwen_ready %}
+    <div class="notice">还没有配置千问 API。请复制 .env.example 为 .env，填写 DASHSCOPE_API_KEY，或运行 setup_env_from_csv.py。</div>
+    {% endif %}
+    {% if ai_summary %}
+    <div class="ai-result">
+        <p class="muted">生成时间：{{ ai_summary.generated_at }}</p>
+        <div class="ai-text">{{ ai_summary.summary }}</div>
+    </div>
+    {% else %}
+    <p class="muted">暂无 AI 复盘。导入照片并配置 API 后，可以点击按钮生成。</p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <form action="{{ url_for('upload_photos', roll_id=roll.id) }}" method="post" enctype="multipart/form-data" class="upload-form" data-auto-upload>
+        <label class="upload-dropzone">
+            <input type="file" name="photos" multiple accept="image/*" required>
+            <span class="upload-icon">↑</span>
+            <strong>拖拽或选择冲扫照片</strong>
+            <small>支持 JPG / PNG / WEBP / TIFF；导入后自动编号、统计张数并生成缩略图。</small>
+        </label>
+        <div class="upload-progress-list" aria-live="polite"></div>
+    </form>
+</section>
+
+
+<section class="panel" id="photos" data-photo-panel data-download-url="{{ url_for('roll_download_photos', roll_id=roll.id) }}">
+    <div class="section-title">
+        <h2>照片列表</h2>
+        <div class="actions">
+            <button class="btn" type="button" data-select-all>全选</button>
+            <button class="btn" type="button" data-download-selected>下载</button>
+            {% if qwen_ready %}
+            <form action="{{ url_for('roll_ai_analyze_photos', roll_id=roll.id) }}" method="post" data-batch-ai-form>
+                <button class="btn primary" type="submit">批量分析照片</button>
+            </form>
+            {% endif %}
+            <form action="{{ url_for('index_sheet', roll_id=roll.id) }}" method="post" data-index-form>
+                <button class="btn" type="submit">生成胶片索引图</button>
+            </form>
+        </div>
+    </div>
+    <div class="batch-ai-status" aria-live="polite"></div>
+    <div class="photo-grid">
+        {% for p in photos %}
+        <article class="photo-card" data-photo-id="{{ p.id }}" data-analyze-url="{{ url_for('photo_ai_analyze_json', photo_id=p.id) }}">
+            <a class="photo-link" href="{{ url_for('photo_edit', photo_id=p.id) }}">
+                <img src="{{ url_for('static', filename=p.thumb_path) }}" alt="photo">
+                <span class="photo-overlay">
+                    <span data-card-overlay-score>评分 {{ p.avg_score }}</span>
+                    {% if p.is_featured %}<span>精选</span>{% endif %}
+                    <span>编辑</span>
+                </span>
+            </a>
+            <label class="batch-photo-select" aria-label="选择第 {{ p.frame_number or p.id }} 张照片">
+                <input type="checkbox" data-photo-checkbox>
+                <span></span>
+            </label>
+            <div class="photo-info">
+                <strong>#{{ p.frame_number }}</strong>
+                <span data-card-score>评分 {{ p.avg_score }}</span>
+                {% if p.is_featured %}<span class="star">精选</span>{% endif %}
+            </div>
+            <div class="tags" data-card-tags>
+                {% for tag in p.tags[:6] %}<span>{{ tag }}</span>{% endfor %}
+            </div>
+            <p class="muted small">{{ p.location or '' }}</p>
+            <div class="card-actions">
+                <a class="btn small" href="{{ url_for('photo_edit', photo_id=p.id) }}">编辑</a>
+                <form action="{{ url_for('photo_toggle_featured', photo_id=p.id) }}" method="post">
+                    <button class="btn small" type="submit">{{ '取消精选' if p.is_featured else '精选' }}</button>
+                </form>
+                <form action="{{ url_for('photo_delete', photo_id=p.id) }}" method="post" onsubmit="return confirm('确定删除这条照片记录吗？')">
+                    <button class="btn small danger" type="submit">删除</button>
+                </form>
+            </div>
+        </article>
+        {% else %}
+        <div class="empty">暂无照片。导入冲扫文件后，这里会生成照片卡片与缩略图。</div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="panel" id="index-sheets">
+    <div class="section-title">
+        <h2>已生成索引图</h2>
+    </div>
+    <div class="index-list">
+        {% for sheet in index_sheets %}
+        <article class="index-item index-preview">
+            <a href="{{ url_for('static', filename=sheet.file_path) }}" target="_blank">
+                <img src="{{ url_for('static', filename=sheet.file_path) }}" alt="胶片索引图预览">
+            </a>
+            <div class="index-actions">
+                <span class="muted">{{ sheet.generated_at }}</span>
+                <a class="btn small" href="{{ url_for('static', filename=sheet.file_path) }}" target="_blank">查看原图</a>
+                <a class="btn small primary" href="{{ url_for('static', filename=sheet.file_path) }}" download>下载</a>
+            </div>
+        </article>
+        {% else %}
+        <p class="muted">暂无索引图。</p>
+        {% endfor %}
+    </div>
+</section>
+<script>
+(() => {
+    const form = document.querySelector("[data-auto-upload]");
+    if (!form) return;
+    const input = form.querySelector('input[type="file"]');
+    const list = form.querySelector(".upload-progress-list");
+    const dropzone = form.querySelector(".upload-dropzone");
+    if (!input || !list || !dropzone) return;
+
+    const uploadFile = (file) => new Promise((resolve) => {
+        const item = document.createElement("div");
+        item.className = "upload-progress-item";
+        item.innerHTML = `
+            <div class="upload-progress-head"><span></span><strong>0%</strong></div>
+            <div class="upload-progress-track"><span></span></div>
+        `;
+        item.querySelector("span").textContent = file.name;
+        const percent = item.querySelector("strong");
+        const bar = item.querySelector(".upload-progress-track span");
+        list.appendChild(item);
+
+        const data = new FormData();
+        data.append("photos", file);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", form.action);
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.upload.addEventListener("progress", (event) => {
+            if (!event.lengthComputable) return;
+            const value = Math.round((event.loaded / event.total) * 100);
+            percent.textContent = `${value}%`;
+            bar.style.width = `${value}%`;
+        });
+        xhr.addEventListener("load", () => {
+            const requestOk = xhr.status >= 200 && xhr.status < 300;
+            let payload = {};
+            try { payload = JSON.parse(xhr.responseText || "{}"); } catch { payload = {}; }
+            const ok = requestOk && payload.ok !== false;
+            item.classList.toggle("is-complete", ok);
+            item.classList.toggle("is-error", !ok);
+            percent.textContent = ok ? "完成" : "失败";
+            bar.style.width = "100%";
+            resolve({ ok, saved: Number(payload.saved || 0), skipped: Number(payload.skipped || 0) });
+        });
+        xhr.addEventListener("error", () => {
+            item.classList.add("is-error");
+            percent.textContent = "失败";
+            resolve({ ok: false, saved: 0, skipped: 0 });
+        });
+        xhr.send(data);
+    });
+
+    const uploadFiles = async (files) => {
+        const queue = Array.from(files || []);
+        if (!queue.length) return;
+        list.innerHTML = "";
+        dropzone.classList.add("is-uploading");
+        for (const file of queue) await uploadFile(file);
+        window.location.href = `${location.pathname}?focus=photos#photos`;
+    };
+
+    const preventDropDefault = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (event) => {
+            preventDropDefault(event);
+            dropzone.classList.add("is-dragover");
+        });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (event) => {
+            preventDropDefault(event);
+            dropzone.classList.remove("is-dragover");
+        });
+    });
+
+    dropzone.addEventListener("drop", (event) => uploadFiles(event.dataTransfer ? event.dataTransfer.files : null));
+    input.addEventListener("change", () => uploadFiles(input.files));
+})();
+
+(() => {
+    const form = document.querySelector("[data-index-form]");
+    if (!form) return;
+    const button = form.querySelector("button");
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (button) {
+            button.disabled = true;
+            button.textContent = "生成中...";
+        }
+        const response = await fetch(form.action, {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        }).catch(() => null);
+        if (response && response.ok) {
+            window.location.href = `${location.pathname}?focus=index#index-sheets`;
+        } else if (button) {
+            button.disabled = false;
+            button.textContent = "生成胶片索引图";
+        }
+    });
+})();
+
+(() => {
+    const panel = document.querySelector("[data-photo-panel]");
+    const status = document.querySelector(".batch-ai-status");
+    if (!panel || !status) return;
+    const cards = Array.from(panel.querySelectorAll(".photo-card[data-photo-id]"));
+    const checkboxes = cards.map((card) => card.querySelector("[data-photo-checkbox]")).filter(Boolean);
+    const selectAllButton = panel.querySelector("[data-select-all]");
+    const downloadButton = panel.querySelector("[data-download-selected]");
+    const aiForm = panel.querySelector("[data-batch-ai-form]");
+    const aiButton = aiForm?.querySelector("button");
+
+    const addStatus = (message, ok = true) => {
+        const item = document.createElement("div");
+        item.className = `batch-ai-item ${ok ? "is-complete" : "is-error"}`;
+        item.textContent = message;
+        status.appendChild(item);
+        item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        window.setTimeout(() => {
+            item.classList.add("is-fading");
+            window.setTimeout(() => item.remove(), 260);
+        }, ok ? 3200 : 4200);
+    };
+
+    const updateCard = (card, payload) => {
+        const scoreText = `评分 ${payload.avg_score ?? "-"}`;
+        const score = card.querySelector("[data-card-score]");
+        const overlayScore = card.querySelector("[data-card-overlay-score]");
+        const tags = card.querySelector("[data-card-tags]");
+        if (score) score.textContent = scoreText;
+        if (overlayScore) overlayScore.textContent = scoreText;
+        if (tags) {
+            tags.innerHTML = "";
+            (payload.tags || []).slice(0, 6).forEach((tag) => {
+                const item = document.createElement("span");
+                item.textContent = tag;
+                tags.appendChild(item);
+            });
+        }
+        card.classList.add("is-ai-updated");
+    };
+
+    const selectedCards = () => cards.filter((card) => card.querySelector("[data-photo-checkbox]")?.checked);
+
+    const syncSelectedState = () => {
+        cards.forEach((card) => {
+            const checkbox = card.querySelector("[data-photo-checkbox]");
+            card.classList.toggle("is-batch-selected", Boolean(checkbox?.checked));
+        });
+        const allSelected = checkboxes.length > 0 && checkboxes.every((item) => item.checked);
+        if (selectAllButton) selectAllButton.textContent = allSelected ? "全不选" : "全选";
+        panel.classList.toggle("is-selecting-photos", checkboxes.some((item) => item.checked));
+    };
+
+    checkboxes.forEach((checkbox) => checkbox.addEventListener("change", syncSelectedState));
+
+    selectAllButton?.addEventListener("click", () => {
+        const shouldSelect = !checkboxes.every((item) => item.checked);
+        checkboxes.forEach((item) => { item.checked = shouldSelect; });
+        panel.classList.toggle("is-selecting-photos", shouldSelect);
+        syncSelectedState();
+    });
+
+    downloadButton?.addEventListener("click", () => {
+        const ids = selectedCards().map((card) => card.dataset.photoId).filter(Boolean);
+        if (!ids.length) {
+            addStatus("请先选择要下载的照片。", false);
+            return;
+        }
+        window.location.href = `${panel.dataset.downloadUrl}?ids=${ids.join(",")}`;
+    });
+
+    aiForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const queue = selectedCards();
+        status.innerHTML = "";
+        if (!queue.length) {
+            addStatus("请先选择要分析的照片。", false);
+            return;
+        }
+        if (aiButton) {
+            aiButton.disabled = true;
+            aiButton.textContent = "分析中...";
+        }
+        checkboxes.forEach((item) => { item.disabled = true; });
+
+        let completed = 0;
+        for (const card of queue) {
+            const response = await fetch(card.dataset.analyzeUrl, {
+                method: "POST",
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            }).catch((error) => ({ ok: false, json: async () => ({ message: error.message }) }));
+            let payload;
+            try { payload = await response.json(); } catch { payload = { message: response.ok ? "已分析" : "分析失败" }; }
+            if (response.ok && payload.ok) {
+                completed += 1;
+                updateCard(card, payload);
+                addStatus(payload.message || "已分析", true);
+            } else {
+                addStatus(payload.message || "分析失败", false);
+            }
+        }
+
+        addStatus(`批量分析完成：${completed}/${queue.length} 张，正在刷新...`, true);
+        setTimeout(() => { window.location.href = `${location.pathname}?focus=photos#photos`; }, 900);
+    });
+
+    syncSelectedState();
+})();
+</script>
+{% endblock %}

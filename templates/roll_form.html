@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero compact-hero">
+    <div>
+        <p class="eyebrow">Develop</p>
+        <h1>{{ '修订胶卷' if roll else '显影' }}</h1>
+        <p class="hero-line">写下胶片、器材、地点与拍摄状态，像给底片袋压上一枚清晰卷标。</p>
+    </div>
+    <div class="label-preview hero-label-preview">
+        <span>FILMLOG</span>
+        <strong>{{ roll.film_type if roll and roll.film_type else 'NEW ROLL' }}</strong>
+        <small>{{ roll.camera_model if roll and roll.camera_model else 'CAMERA / LENS / LOCATION' }}</small>
+    </div>
+</section>
+
+<section class="roll-form-layout single-column">
+    <section class="panel">
+        <form method="post" class="form-grid roll-form">
+            <fieldset class="full">
+                <legend>胶卷标签</legend>
+                <div class="form-grid">
+                    <label>档案标题<input name="title" required value="{{ roll.title if roll else '' }}" placeholder="Kodak Gold 200 第1卷"></label>
+                    <label>胶卷型号
+                        <input name="film_type" list="film_type_options" value="{{ roll.film_type if roll else '' }}" placeholder="Kodak Gold 200">
+                    </label>
+                    <label>ISO
+                        <select name="iso">
+                            <option value="">未填写</option>
+                            {% for iso in iso_options %}
+                            <option value="{{ iso }}" {% if roll and roll.iso == iso %}selected{% endif %}>{{ iso }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>画幅
+                        <input name="film_format" list="format_options" value="{{ roll.film_format if roll else '' }}" placeholder="135 / 120">
+                    </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="full">
+                <legend>相机与地点</legend>
+                <div class="form-grid">
+                    <label>相机型号
+                        <input name="camera_model" list="camera_options" value="{{ roll.camera_model if roll else '' }}" placeholder="Nikon FM2">
+                    </label>
+                    <label>镜头型号
+                        <input name="lens_model" list="lens_options" value="{{ roll.lens_model if roll else '' }}" placeholder="50mm F1.8">
+                    </label>
+                    <label class="full">主要地点
+                        <input name="main_location" list="location_options" value="{{ roll.main_location if roll else '' }}" placeholder="上海 / 苏州 / 东京">
+                    </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="full">
+                <legend>状态与时间</legend>
+                <div class="form-grid">
+                    <label>状态
+                        <select name="status" data-roll-status>
+                            {% set current = '待冲扫' if roll and roll.status == '已冲扫' else (roll.status if roll else '拍摄中') %}
+                            {% for s in ['拍摄中','待冲扫','已归档'] %}
+                            <option value="{{ s }}" {% if current==s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>开始日期<input type="date" name="start_date" value="{{ roll.start_date if roll else '' }}"></label>
+                    <label data-end-date-field>结束日期<input type="date" name="end_date" value="{{ roll.end_date if roll else '' }}"></label>
+                    <label class="full">备注<textarea name="note" rows="4">{{ roll.note if roll else '' }}</textarea></label>
+                </div>
+            </fieldset>
+
+            <datalist id="film_type_options">{% for value in options.film_types %}<option value="{{ value }}">{% endfor %}</datalist>
+            <datalist id="camera_options">{% for value in options.cameras %}<option value="{{ value }}">{% endfor %}</datalist>
+            <datalist id="lens_options">{% for value in options.lenses %}<option value="{{ value }}">{% endfor %}</datalist>
+            <datalist id="format_options">{% for value in options.formats %}<option value="{{ value }}">{% endfor %}</datalist>
+            <datalist id="location_options">{% for value in options.locations %}<option value="{{ value }}">{% endfor %}</datalist>
+
+            <div class="form-actions full">
+                <button class="btn primary" type="submit">保存档案</button>
+                <a class="btn light" href="{{ url_for('index', view='rolls') }}">返回档案</a>
+            </div>
+        </form>
+    </section>
+</section>
+<script>
+(() => {
+    const statusSelect = document.querySelector("[data-roll-status]");
+    const endDateField = document.querySelector("[data-end-date-field]");
+    const endDateInput = endDateField?.querySelector("input");
+    if (!statusSelect || !endDateField || !endDateInput) return;
+
+    const syncEndDate = () => {
+        const isShooting = statusSelect.value === "拍摄中";
+        endDateField.hidden = isShooting;
+        endDateInput.disabled = isShooting;
+        if (isShooting) endDateInput.value = "";
+    };
+
+    statusSelect.addEventListener("change", syncEndDate);
+    syncEndDate();
+})();
+</script>
+{% endblock %}

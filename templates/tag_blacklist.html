@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero compact-hero">
+    <div>
+        <p class="eyebrow">Tag filter</p>
+        <h1>标签黑名单</h1>
+        <p class="hero-line">把过宽泛或不想统计的标签移出观片统计，保留照片原始标签记录。</p>
+    </div>
+    <div class="actions">
+        <a class="btn light" href="{{ url_for('stats') }}">返回观片</a>
+    </div>
+</section>
+
+<section class="panel tag-blacklist-panel">
+    <div class="section-title">
+        <div>
+            <h2>加入黑名单</h2>
+            <p class="muted">黑名单只影响观片页的标签分组统计，不会删除任何照片标签。</p>
+        </div>
+        <form class="tag-blacklist-form" action="{{ url_for('tag_blacklist_add') }}" method="post">
+            <input name="name" list="tag_candidate_options" placeholder="输入或选择标签">
+            <button class="btn" type="submit">加入黑名单</button>
+        </form>
+    </div>
+    <datalist id="tag_candidate_options">
+        {% for tag in tag_candidates %}
+        <option value="{{ tag.name }}">{{ tag.name }} · {{ tag.photo_count }}</option>
+        {% endfor %}
+    </datalist>
+</section>
+
+<section class="panel">
+    <div class="section-title">
+        <h2>已隐藏标签</h2>
+        <span class="badge">{{ blacklisted_tags|length }} 个</span>
+    </div>
+    <div class="tag-blacklist">
+        {% for tag in blacklisted_tags %}
+        <form action="{{ url_for('tag_blacklist_delete', item_id=tag.id) }}" method="post">
+            <span>{{ tag.name }}</span>
+            <button class="btn small" type="submit">恢复</button>
+        </form>
+        {% else %}
+        <p class="muted">暂无黑名单标签。</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

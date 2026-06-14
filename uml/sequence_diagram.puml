@@ -1,0 +1,37 @@
+@startuml
+actor "用户" as User
+participant "浏览器" as UI
+participant "Flask app.py" as App
+participant "utils.py" as Utils
+participant "qwen_service.py" as QwenService
+database "SQLite" as DB
+participant "千问 API" as Qwen
+
+== 批量导入照片 ==
+User -> UI: 选择或拖拽照片
+UI -> App: POST /roll/{id}/upload
+App -> Utils: save_photo_file()
+Utils -> Utils: 保存原图并生成缩略图
+Utils -> DB: 写入 photos
+App --> UI: 返回导入结果
+
+== AI 分析照片 ==
+User -> UI: 点击 AI 分析
+UI -> App: POST /photo/{id}/ai_analyze
+App -> DB: 读取照片、胶卷、冲扫和标签
+App -> QwenService: analyze_photo_with_qwen()
+QwenService -> QwenService: 压缩图片
+QwenService -> Qwen: 发送图片和上下文
+Qwen --> QwenService: 描述、标签、评分建议
+App -> DB: 更新照片 AI 字段和评分
+App --> UI: 显示结果
+
+== 生成索引图 ==
+User -> UI: 点击生成胶片索引图
+UI -> App: POST /roll/{id}/index_sheet
+App -> Utils: generate_index_sheet()
+Utils -> DB: 读取本卷照片
+Utils -> Utils: 绘制底片袋风格高清 JPEG
+Utils -> DB: 写入 index_sheets
+App --> UI: 返回胶卷详情页
+@enduml
