@@ -275,6 +275,7 @@
     const downloadButton = panel.querySelector("[data-download-selected]");
     const aiForm = panel.querySelector("[data-batch-ai-form]");
     const aiButton = aiForm?.querySelector("button");
+    let selectionMode = false;
 
     const addStatus = (message, ok = true) => {
         const item = document.createElement("div");
@@ -314,16 +315,28 @@
             card.classList.toggle("is-batch-selected", Boolean(checkbox?.checked));
         });
         const allSelected = checkboxes.length > 0 && checkboxes.every((item) => item.checked);
-        if (selectAllButton) selectAllButton.textContent = allSelected ? "全不选" : "全选";
-        panel.classList.toggle("is-selecting-photos", checkboxes.some((item) => item.checked));
+        const selectedCount = checkboxes.filter((item) => item.checked).length;
+        if (selectAllButton) {
+            selectAllButton.textContent = !selectionMode ? "全选" : (allSelected ? "全不选" : (selectedCount ? "全选" : "退出选择"));
+        }
+        panel.classList.toggle("is-selecting-photos", selectionMode);
     };
 
     checkboxes.forEach((checkbox) => checkbox.addEventListener("change", syncSelectedState));
 
     selectAllButton?.addEventListener("click", () => {
-        const shouldSelect = !checkboxes.every((item) => item.checked);
-        checkboxes.forEach((item) => { item.checked = shouldSelect; });
-        panel.classList.toggle("is-selecting-photos", shouldSelect);
+        const allSelected = checkboxes.length > 0 && checkboxes.every((item) => item.checked);
+        const hasSelected = checkboxes.some((item) => item.checked);
+        if (!selectionMode) {
+            selectionMode = true;
+            checkboxes.forEach((item) => { item.checked = true; });
+        } else if (allSelected) {
+            checkboxes.forEach((item) => { item.checked = false; });
+        } else if (!hasSelected) {
+            selectionMode = false;
+        } else {
+            checkboxes.forEach((item) => { item.checked = true; });
+        }
         syncSelectedState();
     });
 

@@ -68,6 +68,7 @@
                 <label class="full">备注 / 感想<textarea name="note" rows="5">{{ photo.note or '' }}</textarea></label>
                 <div class="form-actions full">
                     <button class="btn primary" type="submit">保存照片信息</button>
+                    <a class="btn" href="{{ url_for('photo_download', photo_id=photo.id) }}">下载</a>
                     <a class="btn light" href="{{ url_for('roll_detail', roll_id=photo.roll_id) }}">返回</a>
                 </div>
             </form>
