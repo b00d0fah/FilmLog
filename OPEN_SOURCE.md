@@ -1,4 +1,4 @@
-# First-Time GitHub Publishing
+# First-Time Source Publishing
 
 This project should be published from the `FilmLog_project` directory, not from its parent directory.
 
@@ -17,7 +17,7 @@ cd FilmLog_project
 git init
 git add .
 git status
-git commit -m "Initial open source release"
+git commit -m "Initial source release"
 ```
 
 ## Push to GitHub
