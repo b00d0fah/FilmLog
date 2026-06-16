@@ -187,7 +187,6 @@ static/thumbs/
 static/index_sheets/
 ```
 
-如果你手绘了新的底片条模板，也建议备份 `assets/film_strips/`，或确认这些模板已经提交到 Git 仓库。
 
 推荐先停止服务再备份：
 

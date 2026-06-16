@@ -236,13 +236,6 @@ PlantUML 源文件位于 `uml/`：
 - `class_diagram.puml`：核心数据模型和服务关系。
 - `sequence_diagram.puml`：照片导入、AI 分析和索引图生成流程。
 
-## 发布前检查
-
-- 不提交 `.env`、数据库、上传原图、缩略图、已生成索引图和 API Key CSV。
-- 不提交 `assets/fonts/` 下的字体文件；公开仓库只保留 `README.md` 和 `.gitkeep`。
-- 确认 `assets/film_strips/` 中的底片条模板和 `sprocket_strip.png` 已纳入代码包。
-- 推送前运行 `python -m py_compile app.py utils.py db.py`。
-
 ## 许可
 
 本项目开放源码，但禁止商业使用。允许个人、学习、研究、审阅和其他非商业用途使用、复制、修改和分发。商业使用需事先获得版权所有者书面许可。详见 [LICENSE](LICENSE)。
