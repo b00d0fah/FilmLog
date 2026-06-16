@@ -1,3 +1,9 @@
+import logging
+
+
+logging.getLogger("waitress.queue").setLevel(logging.ERROR)
+logging.getLogger("waitress").setLevel(logging.ERROR)
+
 from app import app
 
 

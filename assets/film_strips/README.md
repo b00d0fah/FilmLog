@@ -1,36 +1,36 @@
-# Film Strip Templates
+﻿# 胶片条模板
 
-Directory layout:
+目录结构：
 
 - `assets/film_strips/135/`
 - `assets/film_strips/120/`
 
-Each film type directory contains:
+每种胶片规格目录中可以包含：
 
-- One shared sprocket overlay for that format when needed.
-  - Example: `assets/film_strips/135/sprocket_strip.png`
-- One folder per strip template.
-  - Example: `assets/film_strips/135/kodak-gc-400/`
+- 该规格共用的齿孔覆盖层。
+  - 示例：`assets/film_strips/135/sprocket_strip.png`
+- 每个胶片条模板一个独立文件夹。
+  - 示例：`assets/film_strips/135/kodak-gc-400/`
 
-Template folder naming:
+模板文件夹命名规则：
 
-- Lowercase ASCII.
-- Use hyphens for separators.
-- Example: `kodak-gc-400`, `portra-400`, `ilford-hp5-plus`.
+- 使用小写英文和数字。
+- 单词之间用连字符 `-` 分隔。
+- 示例：`kodak-gc-400`、`portra-400`、`ilford-hp5-plus`。
 
-Template file naming inside a folder:
+模板文件夹内的图片命名规则：
 
-- Use six-frame segment filenames.
-- `1-6.png`, `7-12.png`, `13-18.png`, `19-24.png`, `25-30.png`, `31-36.png`, `37-42.png`
+- 按 6 张照片一段命名。
+- `1-6.png`、`7-12.png`、`13-18.png`、`19-24.png`、`25-30.png`、`31-36.png`、`37-42.png`
 
-Generation rules:
+生成规则：
 
-1. The app chooses the template folder from the selected strip template.
-2. It picks the segment file by embedded frame range.
-3. It pastes photos first.
-4. For 135, it pastes the shared sprocket overlay on top.
+1. 程序会根据页面中选择的胶片条模板，找到对应的模板文件夹。
+2. 程序会根据照片所在的帧号范围，选择对应的分段图片。
+3. 程序先把照片贴到模板上。
+4. 对于 135 胶片，程序最后会叠加共用的齿孔覆盖层。
 
-Current built-in assets:
+当前内置资源：
 
 - `135/kodak-gc-400/`
-- shared `135/sprocket_strip.png`
+- 共用齿孔覆盖层：`135/sprocket_strip.png`

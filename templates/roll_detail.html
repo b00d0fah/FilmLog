@@ -177,6 +177,10 @@
             <input type="checkbox" name="show_header" data-index-show-header checked>
             <span>添加标题栏</span>
         </label>
+        <label class="check-row">
+            <input type="checkbox" name="show_header_text" data-index-show-header-text data-default-checked="{{ '1' if index_defaults.show_header_text else '0' }}" {% if index_defaults.show_header_text %}checked{% endif %}>
+            <span>右侧信息</span>
+        </label>
         <div class="index-option-grid">
             <label>标题栏颜色
                 <input type="color" name="header_bg_color" data-default-value="{{ index_defaults.header_bg_color }}" value="{{ index_defaults.header_bg_color }}">
@@ -187,10 +191,10 @@
             <label>备注
                 <input type="text" name="header_note" data-default-value="{{ index_defaults.header_note }}" value="{{ index_defaults.header_note }}" maxlength="160">
             </label>
-            <label>右侧标题
+            <label data-index-header-text-field>右侧标题
                 <input type="text" name="header_title" data-default-value="{{ index_defaults.header_title }}" value="{{ index_defaults.header_title }}" maxlength="120">
             </label>
-            <label>胶卷信息
+            <label data-index-header-text-field>胶卷信息
                 <input type="text" name="film_info" data-default-value="{{ index_defaults.film_info }}" value="{{ index_defaults.film_info }}" maxlength="120">
             </label>
             <label>底片条模板
@@ -307,13 +311,19 @@
     const dialogForm = document.querySelector("[data-film-model-dialog-form]");
     const cancel = document.querySelector("[data-film-model-cancel]");
     const reset = document.querySelector("[data-index-reset]");
+    const headerTextToggle = dialogForm?.querySelector("[data-index-show-header-text]");
+    const headerTextFields = Array.from(dialogForm?.querySelectorAll("[data-index-header-text-field] input, [data-index-header-text-field] select, [data-index-header-text-field] textarea") || []);
     let pending = false;
 
     const fields = () => Array.from(dialogForm?.querySelectorAll("input, select, textarea") || [])
         .filter((field) => field.name);
 
+    const defaultChecked = (field) => field.dataset.defaultChecked === undefined
+        ? true
+        : field.dataset.defaultChecked === "1";
+
     const changed = () => fields().some((field) => {
-        if (field.type === "checkbox") return field.checked !== true;
+        if (field.type === "checkbox") return field.checked !== defaultChecked(field);
         return String(field.value || "") !== String(field.dataset.defaultValue || "");
     });
 
@@ -321,14 +331,22 @@
         if (reset) reset.hidden = !changed();
     };
 
+    const syncHeaderTextFields = () => {
+        const enabled = Boolean(headerTextToggle?.checked);
+        headerTextFields.forEach((field) => {
+            field.disabled = !enabled;
+        });
+    };
+
     const resetDefaults = () => {
         fields().forEach((field) => {
             if (field.type === "checkbox") {
-                field.checked = true;
+                field.checked = defaultChecked(field);
             } else if (field.dataset.defaultValue !== undefined) {
                 field.value = field.dataset.defaultValue;
             }
         });
+        syncHeaderTextFields();
         syncReset();
     };
 
@@ -343,6 +361,7 @@
         if (!dialog) return;
         dialog.classList.add("is-open");
         dialog.setAttribute("aria-hidden", "false");
+        syncHeaderTextFields();
         dialogForm?.querySelector("[name='header_title']")?.focus();
         syncReset();
     };
@@ -358,6 +377,11 @@
             data.set("show_header", "0");
         } else {
             data.set("show_header", "1");
+        }
+        if (!dialogForm.querySelector("[name='show_header_text']")?.checked) {
+            data.set("show_header_text", "0");
+        } else {
+            data.set("show_header_text", "1");
         }
         const response = await fetch(form.action, {
             method: "POST",
@@ -379,7 +403,9 @@
 
     fields().forEach((field) => field.addEventListener("input", syncReset));
     fields().forEach((field) => field.addEventListener("change", syncReset));
+    headerTextToggle?.addEventListener("change", syncHeaderTextFields);
     reset?.addEventListener("click", resetDefaults);
+    syncHeaderTextFields();
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();

@@ -641,6 +641,7 @@ def index_sheet(roll_id):
             raise ValueError("暂不支持生成120格式索引图。")
         options = {
             "show_header": request.form.get("show_header"),
+            "show_header_text": request.form.get("show_header_text"),
             "header_bg_color": request.form.get("header_bg_color"),
             "header_brand": request.form.get("header_brand"),
             "header_title": request.form.get("header_title"),

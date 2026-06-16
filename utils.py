@@ -84,6 +84,7 @@ INDEX_135_LAYOUT = {
 
 INDEX_SHEET_DEFAULTS = {
     "show_header": True,
+    "show_header_text": False,
     "header_height": INDEX_135_LAYOUT["header_h"],
     "header_bg_color": "#101010",
     "header_brand": "FilmLog",
@@ -467,6 +468,7 @@ def normalize_index_sheet_options(raw: dict | None, roll=None) -> dict:
         strip_template = defaults["strip_template"]
     return {
         "show_header": _parse_bool(raw.get("show_header"), defaults["show_header"]),
+        "show_header_text": _parse_bool(raw.get("show_header_text"), defaults["show_header_text"]),
         "header_height": INDEX_135_LAYOUT["header_h"],
         "header_bg_color": _parse_hex_color(raw.get("header_bg_color"), defaults["header_bg_color"]),
         "header_brand": str(raw.get("header_brand") or defaults["header_brand"]).strip()[:80],
@@ -623,26 +625,27 @@ def _draw_135_sheet_header_with_options(sheet: Image.Image, roll, options: dict)
         draw.text((layout["header_brand_x"], left_y), text, fill=fill, font=font)
         left_y += _text_height(draw, text, font) + left_gap
 
-    right_w = layout["header_right_w"]
-    right_x = max(layout["header_brand_x"], width - right_w - layout["header_right_x_offset"])
-    title = options["header_title"]
-    meta = f"{options['film_info'] or roll['film_type'] or 'FILM 135'}  ISO {roll['iso'] or '-'}"
-    date = f"{roll['main_location'] or '-'}  {roll['start_date'] or '-'} - {roll['end_date'] or '-'}"
-    extra = f"{roll['camera_model'] or '-'}  {roll['lens_model'] or '-'}"
-    right_lines = []
-    if title:
-        right_lines.append((_ellipsize(draw, title, title_font, right_w), title_font, layout["header_title_fill"]))
-    right_lines.extend([
-        (_ellipsize(draw, meta, meta_font, right_w), meta_font, layout["header_meta_fill"]),
-        (_ellipsize(draw, date, date_font, right_w), date_font, layout["header_meta_fill"]),
-        (_ellipsize(draw, extra, extra_font, right_w), extra_font, layout["header_meta_fill"]),
-    ])
-    right_gap = layout["header_line_gap"]
-    right_h = sum(_text_height(draw, text, font) for text, font, _fill in right_lines) + right_gap * (len(right_lines) - 1)
-    right_y = max(0, (header_h - right_h) // 2)
-    for text, font, fill in right_lines:
-        draw.text((right_x, right_y), text, fill=fill, font=font)
-        right_y += _text_height(draw, text, font) + right_gap
+    if options.get("show_header_text"):
+        right_w = layout["header_right_w"]
+        right_x = max(layout["header_brand_x"], width - right_w - layout["header_right_x_offset"])
+        title = options["header_title"]
+        meta = f"{options['film_info'] or roll['film_type'] or 'FILM 135'}  ISO {roll['iso'] or '-'}"
+        date = f"{roll['main_location'] or '-'}  {roll['start_date'] or '-'} - {roll['end_date'] or '-'}"
+        extra = f"{roll['camera_model'] or '-'}  {roll['lens_model'] or '-'}"
+        right_lines = []
+        if title:
+            right_lines.append((_ellipsize(draw, title, title_font, right_w), title_font, layout["header_title_fill"]))
+        right_lines.extend([
+            (_ellipsize(draw, meta, meta_font, right_w), meta_font, layout["header_meta_fill"]),
+            (_ellipsize(draw, date, date_font, right_w), date_font, layout["header_meta_fill"]),
+            (_ellipsize(draw, extra, extra_font, right_w), extra_font, layout["header_meta_fill"]),
+        ])
+        right_gap = layout["header_line_gap"]
+        right_h = sum(_text_height(draw, text, font) for text, font, _fill in right_lines) + right_gap * (len(right_lines) - 1)
+        right_y = max(0, (header_h - right_h) // 2)
+        for text, font, fill in right_lines:
+            draw.text((right_x, right_y), text, fill=fill, font=font)
+            right_y += _text_height(draw, text, font) + right_gap
 
 
 def _make_135_strip(photos: list, strip_index: int, roll, film_model: str, options: dict) -> Image.Image:

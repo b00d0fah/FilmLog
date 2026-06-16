@@ -1,4 +1,4 @@
-# FilmLog 胶片摄影信息管理系统
+﻿# FilmLog 胶片摄影信息管理系统
 
 FilmLog 是一个面向个人胶片摄影流程的 Web 信息管理系统。系统以“一卷胶片”为核心，将胶卷档案、冲扫记录、照片导入、评分标签、AI 辅助分析、索引图生成和长期统计复盘整合在同一个工作流中。
 
@@ -38,6 +38,10 @@ FilmLog_project/
 ├── utils.py                # 图片保存、缩略图、评分、索引图工具
 ├── qwen_service.py         # 千问 / DashScope AI 调用封装
 ├── wsgi.py                 # 生产部署入口
+├── FilmLog 本地启动器.bat       # Windows 本地一键启动入口
+├── LOCAL_DEPLOY.md         # 小白用户本地部署说明
+├── scripts/
+│   └── Start-FilmLog.ps1   # Windows 自动检测、安装依赖和启动脚本
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
@@ -56,7 +60,20 @@ FilmLog_project/
 
 ## 本地运行
 
-Windows：
+Windows 推荐方式：
+
+双击项目根目录里的 `FilmLog 本地启动器.bat`。脚本会自动检查 Python、创建 `.venv`、安装依赖、生成 `.env`，然后打开浏览器访问 FilmLog。
+
+首次运行和日常使用都使用同一个入口：
+
+- 第一次运行：自动检查 Python 3.10+、创建虚拟环境、安装依赖、生成本地配置。
+- 日常启动：复用已有 `.venv` 和 `.env`，依赖缺失或 `requirements.txt` 变化时自动补装。
+- API Key：如果项目根目录存在阿里云百炼导出的 API Key CSV，脚本会自动写入 `.env`。
+- 未配置 API Key：系统仍可启动，但自动评分、照片分析和整卷复盘不可用。
+
+更详细的小白版说明见 [LOCAL_DEPLOY.md](LOCAL_DEPLOY.md)。
+
+Windows 手动方式：
 
 ```powershell
 cd FilmLog_project
@@ -109,7 +126,8 @@ QWEN_ENABLE_VISION=1
 
 - `FILMLOG_DB_PATH` 可使用相对路径或绝对路径。
 - `FILMLOG_MAX_CONTENT_MB` 控制上传请求大小，默认 600 MB。
-- 未配置 `DASHSCOPE_API_KEY` 时，系统仍可使用胶卷管理、照片导入、评分、标签、下载、索引图和统计功能；AI 功能会提示未配置。
+- Windows 一键启动脚本会自动扫描项目根目录中的 API Key CSV。支持文件名包含 `apiKey`、`apikey`、`dashscope`、`qwen` 或 `api-key` 的 `.csv` 文件，并读取其中的 `apiKey` 字段；如有 `openAiCompatible` 字段，也会写入 `QWEN_BASE_URL`。
+- 未配置 `DASHSCOPE_API_KEY` 时，系统仍可使用胶卷管理、照片导入、手动评分、标签、下载、索引图和统计功能；自动评分、照片分析和整卷复盘不可用。
 - `QWEN_TEXT_MODELS` 和 `QWEN_VISION_MODELS` 是候选模型列表，主模型不可用时会尝试后续模型。
 
 ## Docker 运行
@@ -228,3 +246,4 @@ PlantUML 源文件位于 `uml/`：
 ## 许可
 
 本项目开放源码，但禁止商业使用。允许个人、学习、研究、审阅和其他非商业用途使用、复制、修改和分发。商业使用需事先获得版权所有者书面许可。详见 [LICENSE](LICENSE)。
+

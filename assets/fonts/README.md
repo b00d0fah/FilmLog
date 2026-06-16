@@ -12,6 +12,3 @@ C:\Windows\Fonts\msyh.ttc
 
 - 不要提交商业字体或授权不明确的字体。
 - 不要把系统字体复制到公开仓库。
-- `.gitignore` 和 `.dockerignore` 默认会排除 `*.ttc`、`*.ttf`、`*.otf`。
-
-推荐做法是只提交本说明文件和 `.gitkeep`，字体文件由部署环境自行提供。
