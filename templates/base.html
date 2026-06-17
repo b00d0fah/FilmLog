@@ -35,24 +35,6 @@
 <footer class="footer">FilmLog · 从拍摄、冲扫到观片，把每一卷留成可回看的光影档案</footer>
 <script>
 (() => {
-    const uploadFlashKey = "filmlog-upload-message";
-    const uploadFlashRaw = sessionStorage.getItem(uploadFlashKey);
-    if (uploadFlashRaw) {
-        sessionStorage.removeItem(uploadFlashKey);
-        try {
-            const uploadFlash = JSON.parse(uploadFlashRaw);
-            const messages = document.querySelector("[data-session-messages]");
-            if (messages && uploadFlash.message) {
-                const item = document.createElement("div");
-                item.className = `alert alert-${uploadFlash.category || "success"}`;
-                item.textContent = uploadFlash.message;
-                messages.appendChild(item);
-            }
-        } catch {
-            // Ignore malformed session messages.
-        }
-    }
-
     const key = `filmlog-scroll:${location.pathname}`;
 
     const saveScroll = () => {

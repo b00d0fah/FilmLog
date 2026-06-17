@@ -76,17 +76,19 @@
             <strong>拖拽或选择冲扫照片</strong>
             <small>支持 JPG / PNG / WEBP / TIFF；导入后自动编号、统计张数并生成缩略图。</small>
         </label>
+        <div class="upload-result" data-upload-result aria-live="polite"></div>
         <div class="upload-progress-list" aria-live="polite"></div>
     </form>
 </section>
 
 
-<section class="panel" id="photos" data-photo-panel data-download-url="{{ url_for('roll_download_photos', roll_id=roll.id) }}">
+<section class="panel" id="photos" data-photo-panel data-download-url="{{ url_for('roll_download_photos', roll_id=roll.id) }}" data-delete-url="{{ url_for('roll_delete_photos', roll_id=roll.id) }}">
     <div class="section-title">
         <h2>照片列表</h2>
         <div class="actions">
             <button class="btn" type="button" data-select-all>全选</button>
             <button class="btn" type="button" data-download-selected>下载</button>
+            <button class="btn danger" type="button" data-delete-selected hidden>删除</button>
             {% if qwen_ready %}
             <form action="{{ url_for('roll_ai_analyze_photos', roll_id=roll.id) }}" method="post" data-batch-ai-form>
                 <button class="btn primary" type="submit">批量分析照片</button>
@@ -159,10 +161,13 @@
                 <span class="muted">{{ sheet.generated_at }}</span>
                 <a class="btn small" href="{{ url_for('static', filename=sheet.file_path) }}" target="_blank">查看原图</a>
                 <a class="btn small primary" href="{{ url_for('static', filename=sheet.file_path) }}" download>下载</a>
+                <form action="{{ url_for('index_sheet_delete', roll_id=roll.id) }}" method="post" onsubmit="return confirm('确定删除这张索引图吗？')">
+                    <button class="btn small danger" type="submit">删除</button>
+                </form>
             </div>
         </article>
         {% else %}
-        <p class="muted">暂无索引图。</p>
+        <p class="muted">未生成索引图。</p>
         {% endfor %}
     </div>
 </section>
@@ -227,7 +232,45 @@
     const input = form.querySelector('input[type="file"]');
     const list = form.querySelector(".upload-progress-list");
     const dropzone = form.querySelector(".upload-dropzone");
-    if (!input || !list || !dropzone) return;
+    const resultBox = form.querySelector("[data-upload-result]");
+    if (!input || !list || !dropzone || !resultBox) return;
+    const uploadFlashKey = "filmlog-upload-message";
+
+    const showUploadResult = (message, hasFailures) => {
+        resultBox.innerHTML = "";
+        const item = document.createElement("div");
+        item.className = `alert alert-${hasFailures ? "warning" : "success"}`;
+        if (hasFailures) {
+            item.classList.add("alert-dismissible");
+            const text = document.createElement("div");
+            text.textContent = message;
+            item.appendChild(text);
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "alert-close";
+            button.setAttribute("aria-label", "关闭提示");
+            button.textContent = "×";
+            button.addEventListener("click", () => item.remove());
+            item.appendChild(button);
+        } else {
+            item.textContent = message;
+            window.setTimeout(() => item.remove(), 4000);
+        }
+        resultBox.appendChild(item);
+    };
+
+    const uploadFlashRaw = sessionStorage.getItem(uploadFlashKey);
+    if (uploadFlashRaw) {
+        sessionStorage.removeItem(uploadFlashKey);
+        try {
+            const uploadFlash = JSON.parse(uploadFlashRaw);
+            if (uploadFlash.message) {
+                showUploadResult(uploadFlash.message, Boolean(uploadFlash.hasFailures));
+            }
+        } catch {
+            // Ignore malformed upload messages.
+        }
+    }
 
     const uploadFile = (file) => new Promise((resolve) => {
         const item = document.createElement("div");
@@ -261,12 +304,18 @@
             item.classList.toggle("is-error", !ok);
             percent.textContent = ok ? "完成" : "失败";
             bar.style.width = "100%";
-            resolve({ ok, saved: Number(payload.saved || 0), skipped: Number(payload.skipped || 0) });
+            resolve({
+                ok,
+                name: file.name,
+                saved: Number(payload.saved || 0),
+                skipped: Number(payload.skipped || 0),
+                message: payload.message || ""
+            });
         });
         xhr.addEventListener("error", () => {
             item.classList.add("is-error");
             percent.textContent = "失败";
-            resolve({ ok: false, saved: 0, skipped: 0 });
+            resolve({ ok: false, name: file.name, saved: 0, skipped: 0, message: "网络错误" });
         });
         xhr.send(data);
     });
@@ -276,7 +325,21 @@
         if (!queue.length) return;
         list.innerHTML = "";
         dropzone.classList.add("is-uploading");
-        for (const file of queue) await uploadFile(file);
+        const results = [];
+        for (const file of queue) results.push(await uploadFile(file));
+        const successCount = results.filter((item) => item.ok).length;
+        const failed = results.filter((item) => !item.ok);
+        const failedNames = failed.map((item) => item.name).filter(Boolean);
+        const message = failedNames.length
+            ? `${successCount} 张上传成功，${failedNames.length} 张上传失败：${failedNames.join("、")}`
+            : `${successCount} 张上传成功，0 张上传失败。`;
+        list.innerHTML = "";
+        dropzone.classList.remove("is-uploading");
+        input.value = "";
+        sessionStorage.setItem(uploadFlashKey, JSON.stringify({
+            message,
+            hasFailures: failedNames.length > 0
+        }));
         window.location.href = `${location.pathname}?focus=photos#photos`;
     };
 
@@ -447,6 +510,7 @@
     const checkboxes = cards.map((card) => card.querySelector("[data-photo-checkbox]")).filter(Boolean);
     const selectAllButton = panel.querySelector("[data-select-all]");
     const downloadButton = panel.querySelector("[data-download-selected]");
+    const deleteButton = panel.querySelector("[data-delete-selected]");
     const aiForm = panel.querySelector("[data-batch-ai-form]");
     const aiButton = aiForm?.querySelector("button");
     let selectionMode = false;
@@ -493,6 +557,9 @@
         if (selectAllButton) {
             selectAllButton.textContent = !selectionMode ? "全选" : (allSelected ? "全不选" : (selectedCount ? "全选" : "退出选择"));
         }
+        if (deleteButton) {
+            deleteButton.hidden = !selectionMode;
+        }
         panel.classList.toggle("is-selecting-photos", selectionMode);
     };
 
@@ -521,6 +588,25 @@
             return;
         }
         window.location.href = `${panel.dataset.downloadUrl}?ids=${ids.join(",")}`;
+    });
+
+    deleteButton?.addEventListener("click", () => {
+        const ids = selectedCards().map((card) => card.dataset.photoId).filter(Boolean);
+        if (!ids.length) {
+            addStatus("请先选择要删除的照片。", false);
+            return;
+        }
+        if (!confirm(`确定删除选中的 ${ids.length} 张照片吗？胶卷会保留。`)) return;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = panel.dataset.deleteUrl;
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "ids";
+        input.value = ids.join(",");
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
     });
 
     aiForm?.addEventListener("submit", async (event) => {

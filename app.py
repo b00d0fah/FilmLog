@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+import sqlite3
 from io import BytesIO
 import tempfile
 import zipfile
 from flask import Flask, after_this_request, flash, jsonify, redirect, render_template, request, url_for, abort, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
-from config import DEBUG, HOST, MAX_CONTENT_LENGTH, PORT, SECRET_KEY
+from config import DEBUG, HOST, MAX_CONTENT_LENGTH, PORT, SECRET_KEY, DB_PATH
 from db import init_db, execute, query_all, query_one
 from utils import allowed_file, save_photo_file, get_tags_for_photo, set_photo_tags, avg_score, generate_index_sheet, get_index_sheet_defaults, list_strip_templates, normalize_score, final_score_from_parts, sql_avg_score_expr, sql_final_score_expr, SCORE_OPTIONS, INDEX_135_MAX_PHOTOS
+from time_utils import local_timestamp
 from qwen_service import (
     analyze_photo_with_qwen,
     generate_roll_summary_with_qwen,
@@ -59,6 +60,72 @@ def get_roll_or_404(roll_id: int):
 
 def static_abs_path(rel_path: str) -> str:
     return os.path.join(BASE_DIR, "static", rel_path)
+
+
+def _remove_index_sheet_file(file_path: str | None):
+    if not file_path:
+        return
+    abs_path = static_abs_path(file_path)
+    if os.path.exists(abs_path):
+        try:
+            os.remove(abs_path)
+        except OSError:
+            pass
+
+
+def _remove_static_file(rel_path: str | None):
+    if not rel_path:
+        return
+    abs_path = static_abs_path(rel_path)
+    if os.path.exists(abs_path):
+        try:
+            os.remove(abs_path)
+        except OSError:
+            pass
+
+
+def _remove_photo_files(photo):
+    if not photo:
+        return
+    _remove_static_file(photo["image_path"])
+    _remove_static_file(photo["thumb_path"])
+
+
+def _resequence_roll_photos(roll_id: int, moved_photo_id: int, target_frame_number: int):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        rows = conn.execute(
+            """
+            SELECT id
+            FROM photos
+            WHERE roll_id = ?
+            ORDER BY COALESCE(frame_number, 999999), created_at, id
+            """,
+            (roll_id,),
+        ).fetchall()
+        ordered_ids = [row["id"] for row in rows if row["id"] != moved_photo_id]
+        if moved_photo_id not in {row["id"] for row in rows}:
+            return
+        insert_at = max(0, min(target_frame_number - 1, len(ordered_ids)))
+        ordered_ids.insert(insert_at, moved_photo_id)
+        for index, photo_id in enumerate(ordered_ids, start=1):
+            conn.execute("UPDATE photos SET frame_number = ? WHERE id = ?", (index, photo_id))
+        conn.commit()
+
+
+def current_index_sheets(roll_id: int) -> list:
+    rows = query_all("SELECT * FROM index_sheets WHERE roll_id=? ORDER BY generated_at DESC, id DESC", (roll_id,))
+    current = []
+    for sheet in rows:
+        file_path = sheet["file_path"]
+        exists = bool(file_path and os.path.exists(static_abs_path(file_path)))
+        if exists and not current:
+            current.append(sheet)
+        else:
+            _remove_index_sheet_file(file_path)
+            execute("DELETE FROM index_sheets WHERE id = ?", (sheet["id"],))
+    return current
 
 
 def compact_roll_text(roll, scan=None) -> str:
@@ -128,6 +195,14 @@ def index():
     q = request.args.get("q", "").strip()
     tag = request.args.get("tag", "").strip()
     status = request.args.get("status", "").strip()
+    filter_target = request.args.get("filter_target", "photos").strip()
+    if filter_target not in {"photos", "rolls"}:
+        filter_target = "photos"
+    if status == "待冲扫":
+        filter_target = "rolls"
+    has_filter = bool(q or tag or status)
+    roll_filter_active = has_filter and filter_target == "rolls"
+    photo_filter_active = has_filter and filter_target == "photos"
     recent_limit = RECENT_ROLL_LIMIT
 
     sql = """
@@ -137,11 +212,11 @@ def index():
     """
     params = []
     where = []
-    if tag:
+    if roll_filter_active and tag:
         sql += " JOIN photos p ON p.roll_id = fr.id JOIN photo_tags pt ON pt.photo_id = p.id JOIN tags t ON t.id = pt.tag_id"
         where.append("t.name = ?")
         params.append(tag)
-    if q:
+    if roll_filter_active and q:
         like = f"%{q}%"
         where.append(
             """
@@ -159,7 +234,7 @@ def index():
             """
         )
         params.extend([like, like, like, like, like, like, like, like])
-    if status:
+    if roll_filter_active and status:
         where.append("fr.status = ?")
         params.append(status)
     if where:
@@ -189,11 +264,11 @@ def index():
     """
     photo_params = []
     photo_where = []
-    if tag:
+    if photo_filter_active and tag:
         photo_sql += " JOIN photo_tags pt ON pt.photo_id = p.id JOIN tags t ON t.id = pt.tag_id"
         photo_where.append("t.name = ?")
         photo_params.append(tag)
-    if q:
+    if photo_filter_active and q:
         like = f"%{q}%"
         photo_where.append(
             "(fr.title LIKE ? OR fr.film_type LIKE ? OR fr.camera_model LIKE ? OR fr.main_location LIKE ? "
@@ -204,10 +279,10 @@ def index():
             "))"
         )
         photo_params.extend([like, like, like, like, like, like, like, like])
-    if status:
+    if photo_filter_active and status:
         photo_where.append("fr.status = ?")
         photo_params.append(status)
-    if photo_where:
+    if photo_filter_active and photo_where:
         photo_sql += " WHERE " + " AND ".join(photo_where)
     else:
         photo_sql += " WHERE 1 = 0"
@@ -304,7 +379,10 @@ def index():
     tags = query_all(
         """
         SELECT t.name, COUNT(pt.photo_id) AS photo_count
-        FROM tags t LEFT JOIN photo_tags pt ON pt.tag_id = t.id
+        FROM tags t
+        LEFT JOIN photo_tags pt ON pt.tag_id = t.id
+        LEFT JOIN tag_blacklist tb ON tb.name = t.name
+        WHERE tb.id IS NULL
         GROUP BY t.id
         ORDER BY t.name
         """
@@ -320,6 +398,8 @@ def index():
         q=q,
         tag=tag,
         status=status,
+        filter_target=filter_target,
+        has_filter=has_filter,
         view=view,
     )
 
@@ -415,7 +495,7 @@ def roll_detail(roll_id):
         item["tags"] = get_tags_for_photo(p["id"])
         item["avg_score"] = avg_score(p)
         photo_items.append(item)
-    index_sheets = query_all("SELECT * FROM index_sheets WHERE roll_id=? ORDER BY generated_at DESC", (roll_id,))
+    index_sheets = current_index_sheets(roll_id)
     ai_summary = query_one("SELECT * FROM ai_roll_summaries WHERE roll_id=? ORDER BY generated_at DESC LIMIT 1", (roll_id,))
     imported = len(photos)
     roll_stats = {
@@ -518,6 +598,11 @@ def photo_edit(photo_id):
         abort(404)
     if request.method == "POST":
         is_featured = 1 if request.form.get("is_featured") == "on" else 0
+        frame_number_raw = request.form.get("frame_number")
+        try:
+            frame_number = int(frame_number_raw) if frame_number_raw else None
+        except ValueError:
+            frame_number = None
         execute(
             """
             UPDATE photos SET
@@ -526,7 +611,7 @@ def photo_edit(photo_id):
             WHERE id=?
             """,
             (
-                request.form.get("frame_number") or None,
+                frame_number,
                 request.form.get("shooting_time"),
                 request.form.get("location"),
                 request.form.get("aperture"),
@@ -541,6 +626,8 @@ def photo_edit(photo_id):
                 photo_id,
             ),
         )
+        if frame_number and frame_number > 0:
+            _resequence_roll_photos(photo["roll_id"], photo_id, frame_number)
         set_photo_tags(photo_id, request.form.get("tags", "").split(","), append=False)
         flash("照片信息已保存。", "success")
         return redirect(url_for("roll_detail", roll_id=photo["roll_id"]))
@@ -554,8 +641,34 @@ def photo_delete(photo_id):
     if not photo:
         abort(404)
     roll_id = photo["roll_id"]
+    _remove_photo_files(photo)
     execute("DELETE FROM photos WHERE id = ?", (photo_id,))
     flash("照片记录已删除。", "success")
+    return redirect(url_for("roll_detail", roll_id=roll_id))
+
+
+@app.route("/roll/<int:roll_id>/photos/delete", methods=["POST"])
+def roll_delete_photos(roll_id):
+    get_roll_or_404(roll_id)
+    raw_ids = request.form.get("ids", "")
+    ids = [int(item) for item in raw_ids.split(",") if item.strip().isdigit()]
+    if not ids:
+        flash("请先选择要删除的照片。", "warning")
+        return redirect(url_for("roll_detail", roll_id=roll_id))
+    placeholders = ",".join("?" for _ in ids)
+    photos = query_all(
+        f"SELECT * FROM photos WHERE roll_id = ? AND id IN ({placeholders})",
+        (roll_id, *ids),
+    )
+    matched_ids = [photo["id"] for photo in photos]
+    if not matched_ids:
+        flash("没有可删除的照片。", "warning")
+        return redirect(url_for("roll_detail", roll_id=roll_id))
+    for photo in photos:
+        _remove_photo_files(photo)
+    matched_placeholders = ",".join("?" for _ in matched_ids)
+    execute(f"DELETE FROM photos WHERE id IN ({matched_placeholders})", tuple(matched_ids))
+    flash(f"已删除 {len(matched_ids)} 张照片，胶卷已保留。", "success")
     return redirect(url_for("roll_detail", roll_id=roll_id))
 
 
@@ -664,6 +777,17 @@ def index_sheet(roll_id):
     return redirect(url_for("roll_detail", roll_id=roll_id))
 
 
+@app.route("/roll/<int:roll_id>/index_sheet/delete", methods=["POST"])
+def index_sheet_delete(roll_id):
+    get_roll_or_404(roll_id)
+    sheets = query_all("SELECT * FROM index_sheets WHERE roll_id = ?", (roll_id,))
+    for sheet in sheets:
+        _remove_index_sheet_file(sheet["file_path"])
+    execute("DELETE FROM index_sheets WHERE roll_id = ?", (roll_id,))
+    flash("索引图已删除。", "success")
+    return redirect(url_for("roll_detail", roll_id=roll_id, focus="index") + "#index-sheets")
+
+
 def analyze_and_overwrite_photo(photo):
     roll = get_roll_or_404(photo["roll_id"])
     scan = query_one("SELECT * FROM develop_scans WHERE roll_id = ?", (roll["id"],))
@@ -686,7 +810,7 @@ def analyze_and_overwrite_photo(photo):
         if str(t).strip() and str(t).strip() not in blocked_location_tags
     ]
     scores = result.get("scores") or {}
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    generated_at = local_timestamp()
     execute(
         """
         UPDATE photos SET
@@ -833,7 +957,7 @@ def roll_ai_summary(roll_id):
             photo_table_text=sample_text,
             stats_text=stats_text,
         )
-        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        generated_at = local_timestamp()
         execute("DELETE FROM ai_roll_summaries WHERE roll_id = ?", (roll_id,))
         execute(
             "INSERT INTO ai_roll_summaries(roll_id, summary, generated_at) VALUES (?, ?, ?)",

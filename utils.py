@@ -3,12 +3,12 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import datetime
 from math import floor
 from typing import Iterable, List
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from werkzeug.utils import secure_filename
 from db import execute, query_all, query_one
+from time_utils import local_timestamp
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -788,6 +788,6 @@ def generate_index_sheet(roll_id: int, film_model: str | None = None, options: d
             except OSError:
                 pass
     execute("DELETE FROM index_sheets WHERE roll_id = ?", (roll_id,))
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    generated_at = local_timestamp()
     execute("INSERT INTO index_sheets(roll_id, file_path, generated_at) VALUES (?, ?, ?)", (roll_id, rel, generated_at))
     return rel

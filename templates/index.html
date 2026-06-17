@@ -20,6 +20,10 @@
     <form class="filter-form" method="get">
         <input type="hidden" name="view" value="rolls">
         <input type="text" name="q" value="{{ q }}" placeholder="搜索胶卷、照片地点、备注、文件名">
+        <select name="filter_target">
+            <option value="photos" {% if filter_target == 'photos' %}selected{% endif %}>筛选图片</option>
+            <option value="rolls" {% if filter_target == 'rolls' %}selected{% endif %}>筛选胶卷</option>
+        </select>
         <select name="status">
             <option value="">全部状态</option>
             {% for s in ['拍摄中','待冲扫','已归档'] %}
@@ -37,7 +41,7 @@
     </form>
 </section>
 
-{% if q or tag or status %}
+{% if has_filter and filter_target == 'photos' %}
 <section class="panel">
     <div class="section-title">
         <div>
@@ -77,7 +81,16 @@
 </section>
 {% endif %}
 
+{% if not has_filter or filter_target == 'rolls' %}
 <section class="roll-list library-list" id="rolls">
+    {% if filter_target == 'rolls' %}
+    <div class="section-title">
+        <div>
+            <h2>匹配胶卷</h2>
+        </div>
+        <span class="badge">{{ rolls|length }} 卷</span>
+    </div>
+    {% endif %}
     {% for roll in rolls %}
     <article class="roll-card">
         <div class="roll-card-main">
@@ -108,9 +121,10 @@
         </div>
     </article>
     {% else %}
-    <div class="empty">还没有胶卷档案。去显影页建立第一卷，再导入冲扫照片。</div>
+    <div class="empty">{% if has_filter and filter_target == 'rolls' %}没有匹配胶卷。可以换一个标签或关键词。{% else %}还没有胶卷档案。去显影页建立第一卷，再导入冲扫照片。{% endif %}</div>
     {% endfor %}
 </section>
+{% endif %}
 {% else %}
 <section class="dashboard-hero">
     <div>

@@ -24,3 +24,4 @@ MAX_CONTENT_LENGTH = _int_env("FILMLOG_MAX_CONTENT_MB", 600) * 1024 * 1024
 HOST = os.getenv("FILMLOG_HOST", "127.0.0.1")
 PORT = _int_env("FILMLOG_PORT", 5000)
 DEBUG = os.getenv("FILMLOG_DEBUG", "1").lower() in {"1", "true", "yes", "on"}
+TIMEZONE = os.getenv("TZ") or os.getenv("FILMLOG_TIMEZONE", "Asia/Shanghai")

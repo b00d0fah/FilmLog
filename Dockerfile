@@ -4,12 +4,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FILMLOG_HOST=0.0.0.0 \
     FILMLOG_PORT=8000 \
-    FILMLOG_DEBUG=0
+    FILMLOG_DEBUG=0 \
+    TZ=Asia/Shanghai
 
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core fonts-noto-cjk tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

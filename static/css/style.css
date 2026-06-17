@@ -641,14 +641,12 @@ textarea:focus-visible {
 
 .filter-form {
     display: grid;
-    grid-template-columns: minmax(240px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+    grid-template-columns: minmax(240px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
     gap: 12px;
 }
 
 .filter-panel {
-    position: sticky;
-    top: 76px;
-    z-index: 8;
+    position: static;
 }
 
 .filter-photo-grid {
@@ -719,6 +717,10 @@ textarea { resize: vertical; }
 
 .upload-form {
     align-items: stretch;
+}
+
+.upload-result {
+    flex: 1 1 100%;
 }
 
 .actions form,
@@ -1074,6 +1076,26 @@ textarea { resize: vertical; }
 .alert-danger { border-left-color: var(--accent-2); }
 .alert-warning { border-left-color: var(--accent); }
 
+.alert-dismissible {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.alert-close {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--paper);
+    background: transparent;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+
 .detail-grid,
 .stats-layout {
     display: grid;
@@ -1296,6 +1318,10 @@ textarea { resize: vertical; }
 
 .index-actions .muted {
     margin-right: auto;
+}
+
+.index-actions form {
+    margin: 0;
 }
 
 .film-model-dialog {
